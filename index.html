@@ -43,7 +43,7 @@ const PTS={words:5,reading:7,listening:8};
 const W=['SUN','MON','TUE','WED','THU','FRI','SAT'], WC=['周日','周一','周二','周三','周四','周五','周六'];
 const META={words:{emoji:'📖',title:'单词任务',sub:'背诵今日60个英语单词',freq:'每天'},reading:{emoji:'📝',title:'四级阅读',sub:'完成一篇四级阅读理解',freq:'每天'},listening:{emoji:'🎧',title:'四级听力',sub:'完成一篇四级听力理解',freq:'每隔一天'}};
 let session=null, profile=null, tasks=[], note='', weekOffset=0, viewDay=null, pendingUpload=null;
-function ymd(d){return d.toISOString().slice(0,10)} function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
+function ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`} function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
 function weekStart(off=0){const d=startOfDay(new Date());d.setDate(d.getDate()-d.getDay()+off*7);return d}
 function dayDate(di,off=weekOffset){const d=weekStart(off);d.setDate(d.getDate()+di);return d}
 function fmt(d){return `${d.getMonth()+1}月${d.getDate()}日`} function full(d){return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${WC[d.getDay()]}`}
