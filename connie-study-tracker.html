@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connie 英语学习监督系统</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Mono:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#07090f; --bg-card:#0e1119; --bg-card2:#141820; --bg-card3:#1a2030;
+  --border:#1c2235; --border-hi:#28324a;
+  --gold:#d4a853; --gold-light:#f0c97a; --gold-dim:#6b5025; --gold-glow:rgba(212,168,83,0.12);
+  --connie:#a78bfa; --connie-dim:#2d1f5e; --connie-glow:rgba(167,139,250,0.12);
+  --green:#34d399; --green-dim:#0d3d28; --green-glow:rgba(52,211,153,0.12);
+  --amber:#f59e0b; --amber-dim:#78350f; --amber-glow:rgba(245,158,11,0.12);
+  --red:#f87171; --red-dim:#450a0a; --red-glow:rgba(248,113,113,0.12);
+  --text:#dde2ed; --text2:#7e8fa8; --text3:#3d4d65;
+  --r:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh}
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.5}
+
+/* HEADER */
+.header{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 36px;height:64px;background:rgba(7,9,15,.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.brand-main{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--gold);letter-spacing:-.3px}
+.brand-sub{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text3)}
+.hc-date{font-size:13px;font-weight:500;color:var(--text2)}
+.hc-week{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:2px}
+.header-center{display:flex;flex-direction:column;align-items:center;gap:2px}
+.header-right{display:flex;align-items:center;gap:8px}
+.btn-sm{background:var(--bg-card2);border:1px solid var(--border-hi);color:var(--text2);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .2s;font-family:'DM Mono',monospace;letter-spacing:.5px}
+.btn-sm:hover{border-color:var(--gold);color:var(--gold)}
+.btn-sm.jaco-mode-btn{border-color:var(--gold-dim);color:var(--gold)}
+.btn-sm.jaco-mode-btn.active{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-light)}
+.btn-danger:hover{border-color:var(--red);color:var(--red)}
+
+/* PENDING BADGE on header */
+.pending-badge{display:none;background:var(--amber);color:#000;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:20px;letter-spacing:.5px}
+.pending-badge.show{display:inline-block}
+
+/* WRAP */
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:28px 24px 80px;display:flex;flex-direction:column;gap:22px}
+
+/* HERO */
+.hero{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:28px 32px;display:grid;grid-template-columns:1fr auto auto 1fr;gap:28px;align-items:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--connie),var(--gold),transparent)}
+.hero-avatar{width:72px;height:72px;border-radius:50%;background:var(--connie-dim);border:2px solid var(--connie);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--connie);box-shadow:0 0 24px rgba(167,139,250,.2);flex-shrink:0}
+.hero-name{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:var(--text);margin-bottom:4px}
+.hero-role{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+.hero-tags{display:flex;flex-wrap:wrap;gap:8px}
+.hero-tag{font-size:12px;color:var(--text2);background:var(--bg-card2);border:1px solid var(--border-hi);padding:3px 10px;border-radius:20px}
+/* score block mirrors the avatar — same size, right-aligned */
+.hero-score-block{width:72px;height:72px;border-radius:50%;background:var(--gold-dim);border:2px solid var(--gold);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(212,168,83,.2);flex-shrink:0;justify-self:end}
+.score-big{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;line-height:1;color:var(--gold-light);text-shadow:0 0 20px rgba(212,168,83,.4)}
+.score-label{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--gold-dim);text-transform:uppercase;margin-top:2px}
+/* streak pill sits in the 4th column, left-aligned to mirror tags */
+.score-streak{font-size:12px;color:var(--gold);background:var(--gold-glow);border:1px solid var(--gold-dim);padding:4px 12px;border-radius:20px;font-family:'DM Mono',monospace;white-space:nowrap;align-self:center}
+
+/* JACO BAR */
+.jaco-bar{background:var(--bg-card);border:1px solid var(--gold-dim);border-radius:var(--r);padding:16px 22px;display:flex;align-items:center;gap:16px}
+.jaco-icon{width:40px;height:40px;border-radius:50%;background:var(--gold-dim);border:1.5px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--gold);flex-shrink:0}
+.jaco-note-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--gold-dim);margin-bottom:3px}
+#jaco-note-input{flex:1;background:var(--bg-card2);border:1px solid var(--border-hi);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s}
+#jaco-note-input:focus{border-color:var(--gold)}
+#jaco-note-input::placeholder{color:var(--text3)}
+.save-note-btn{background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-family:'DM Mono',monospace;letter-spacing:1px;transition:all .2s;white-space:nowrap}
+.save-note-btn:hover{background:var(--gold);color:#0a0c10}
+
+/* WEEK GRID */
+.week-nav-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text3)}
+.nav-btn{background:var(--bg-card2);border:1px solid var(--border-hi);color:var(--text2);padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px;transition:all .2s}
+.nav-btn:hover{border-color:var(--gold);color:var(--gold)}
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+.day-cell{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .2s;user-select:none}
+.day-cell:hover{border-color:var(--border-hi);background:var(--bg-card2)}
+.day-cell.selected{border-color:var(--gold);background:var(--gold-glow)}
+.day-cell.is-today .day-num-label{color:var(--gold)}
+.day-cell.full-done{border-color:var(--connie)}
+.day-name{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase}
+.day-num-label{font-size:20px;font-weight:700;color:var(--text)}
+.day-pip-row{display:flex;gap:4px}
+.pip{width:7px;height:7px;border-radius:50%;background:var(--border-hi);transition:all .2s}
+.pip.done{background:var(--green);box-shadow:0 0 5px var(--green)}
+.pip.pending{background:var(--amber);box-shadow:0 0 5px var(--amber)}
+.pip.na{background:var(--bg-card3)}
+.day-pts-badge{font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);opacity:0;transition:opacity .2s}
+.day-cell.selected .day-pts-badge,.day-cell:hover .day-pts-badge{opacity:1}
+
+/* TASKS */
+.tasks-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.tasks-header h2{font-family:'Playfair Display',serif;font-size:20px;font-weight:700}
+.date-chip{font-family:'DM Mono',monospace;font-size:11px;color:var(--connie);background:var(--connie-dim);border:1px solid rgba(167,139,250,.3);padding:3px 12px;border-radius:20px;letter-spacing:1px}
+.tasks-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+
+.task-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:22px 20px;transition:all .25s;position:relative;overflow:hidden}
+.task-card:hover{border-color:var(--border-hi)}
+
+/* Task states */
+.task-card.state-pending{border-color:var(--amber);background:linear-gradient(135deg,var(--bg-card),rgba(245,158,11,.04))}
+.task-card.state-approved{border-color:var(--connie);background:linear-gradient(135deg,var(--bg-card),rgba(167,139,250,.04))}
+.task-card.state-rejected{border-color:var(--red);background:linear-gradient(135deg,var(--bg-card),rgba(248,113,113,.04))}
+.task-card.locked{opacity:.38;pointer-events:none}
+
+/* status crown icon top-right */
+.task-status-icon{position:absolute;top:14px;right:16px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.task-card.state-pending .task-status-icon{background:var(--amber);color:#000}
+.task-card.state-approved .task-status-icon{background:var(--connie);color:#fff;box-shadow:0 0 12px rgba(167,139,250,.4)}
+.task-card.state-rejected .task-status-icon{background:var(--red);color:#fff}
+
+.task-emoji{font-size:28px;margin-bottom:10px;display:block;line-height:1}
+.task-pts-badge{display:inline-flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;font-size:11px;color:var(--gold);background:var(--gold-glow);border:1px solid var(--gold-dim);padding:2px 9px;border-radius:20px;margin-bottom:12px}
+.task-title{font-size:16px;font-weight:600;margin-bottom:4px}
+.task-sub{font-size:12px;color:var(--text3);margin-bottom:6px;line-height:1.5}
+.task-freq{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
+.task-freq.special{color:var(--gold)}
+
+/* proof thumbnail */
+.proof-thumb-wrap{margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--border-hi);position:relative;cursor:pointer}
+.proof-thumb-wrap img{width:100%;max-height:100px;object-fit:cover;display:block;transition:opacity .2s}
+.proof-thumb-wrap:hover img{opacity:.8}
+.proof-thumb-label{position:absolute;bottom:0;left:0;right:0;background:rgba(7,9,15,.75);font-size:10px;font-family:'DM Mono',monospace;color:var(--text2);padding:4px 8px;letter-spacing:1px;text-align:center}
+
+/* status text row */
+.task-status-row{font-family:'DM Mono',monospace;font-size:11px;padding:6px 10px;border-radius:6px;margin-bottom:10px;letter-spacing:.5px}
+.task-card.state-pending .task-status-row{background:var(--amber-glow);border:1px solid var(--amber-dim);color:var(--amber)}
+.task-card.state-approved .task-status-row{background:var(--green-glow);border:1px solid var(--green-dim);color:var(--green)}
+.task-card.state-rejected .task-status-row{background:var(--red-glow);border:1px solid var(--red-dim);color:var(--red)}
+
+.task-actions{display:flex;flex-direction:column;gap:8px}
+
+.btn-upload{width:100%;padding:10px;border-radius:9px;border:1.5px dashed var(--border-hi);background:transparent;color:var(--text2);font-size:13px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;font-family:'Inter',sans-serif}
+.btn-upload:hover{border-color:var(--connie);color:var(--connie);background:var(--connie-glow)}
+
+.btn-approve{width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--green);background:var(--green-dim);color:var(--green);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-approve:hover{background:var(--green);color:#0a0c10}
+.btn-reject{width:100%;padding:8px;border-radius:9px;border:1px solid var(--border-hi);background:transparent;color:var(--text3);font-size:12px;cursor:pointer;transition:all .2s}
+.btn-reject:hover{border-color:var(--red);color:var(--red);background:var(--red-glow)}
+.btn-revoke{width:100%;padding:8px;border-radius:9px;border:1px solid var(--border-hi);background:transparent;color:var(--text3);font-size:12px;cursor:pointer;transition:all .2s}
+.btn-revoke:hover{border-color:var(--text3);color:var(--text2)}
+
+.locked-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:rgba(7,9,15,.6);border-radius:var(--r)}
+.locked-overlay span{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)}
+
+/* BOTTOM */
+.bottom-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:16px}
+.panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.panel-head{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text3)}
+.panel-body{padding:16px 20px}
+.stat-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-card2);border:1px solid var(--border);border-radius:9px;margin-bottom:8px}
+.stat-item:last-child{margin-bottom:0}
+.stat-name{font-size:12px;color:var(--text2)}
+.stat-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)}
+.progress-bar-wrap{width:80px;height:5px;background:var(--bg-card3);border-radius:3px;overflow:hidden}
+.progress-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--connie),var(--gold));transition:width .5s ease}
+.stat-pct{font-family:'DM Mono',monospace;font-size:12px;color:var(--gold);min-width:30px;text-align:right}
+
+/* LOG */
+.log-scroll{max-height:290px;overflow-y:auto}
+.log-scroll::-webkit-scrollbar{width:3px}
+.log-scroll::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+.log-entry{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px}
+.log-entry:last-child{border-bottom:none}
+.log-icon{font-size:14px;flex-shrink:0}
+.log-text{flex:1;color:var(--text2)}
+.log-status{font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.log-status.approved{background:var(--green-dim);color:var(--green)}
+.log-status.pending{background:var(--amber-dim);color:var(--amber)}
+.log-status.rejected{background:var(--red-dim);color:var(--red)}
+.log-pts{font-family:'DM Mono',monospace;font-size:12px;color:var(--gold);font-weight:500}
+.log-pts.muted{color:var(--text3)}
+.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)}
+
+/* IMAGE LIGHTBOX */
+#lightbox{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+#lightbox.open{display:flex}
+#lightbox-img{max-width:90vw;max-height:85vh;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.8);border:1px solid var(--border-hi)}
+#lightbox-close{position:absolute;top:20px;right:24px;background:var(--bg-card);border:1px solid var(--border-hi);color:var(--text);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+#lightbox-close:hover{border-color:var(--red);color:var(--red)}
+#lightbox-meta{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border-hi);border-radius:10px;padding:10px 20px;font-size:13px;color:var(--text2);text-align:center;font-family:'DM Mono',monospace;letter-spacing:1px}
+
+/* TOAST */
+#toast-wrap{position:fixed;bottom:28px;right:28px;z-index:9998;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--bg-card);border:1px solid var(--border-hi);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:toastIn .35s cubic-bezier(.34,1.56,.64,1) both,toastOut .3s 3.2s ease both;min-width:220px}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
+@keyframes popIn{0%{transform:scale(.85);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+@keyframes scoreUp{0%,100%{transform:scale(1)}50%{transform:scale(1.15);color:var(--gold-light)}}
+.pop-in{animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
+.score-up{animation:scoreUp .45s ease both}
+
+/* REVIEW QUEUE PANEL */
+.review-queue{background:var(--bg-card);border:1px solid var(--amber-dim);border-radius:var(--r);overflow:hidden}
+.review-queue .panel-head{border-bottom:1px solid var(--amber-dim);background:rgba(245,158,11,.05)}
+.review-item{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);transition:background .2s}
+.review-item:last-child{border-bottom:none}
+.review-item:hover{background:var(--bg-card2)}
+.review-thumb{width:52px;height:42px;border-radius:6px;object-fit:cover;border:1px solid var(--border-hi);cursor:pointer;flex-shrink:0;transition:transform .2s}
+.review-thumb:hover{transform:scale(1.05)}
+.review-info{flex:1}
+.review-task-name{font-size:13px;font-weight:600;margin-bottom:2px}
+.review-meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:.5px}
+.review-btns{display:flex;gap:8px}
+.rbtn-approve{background:var(--green-dim);border:1px solid var(--green);color:var(--green);padding:6px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+.rbtn-approve:hover{background:var(--green);color:#0a0c10}
+.rbtn-reject{background:transparent;border:1px solid var(--border-hi);color:var(--text3);padding:6px 14px;border-radius:7px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.rbtn-reject:hover{border-color:var(--red);color:var(--red)}
+.empty-review{text-align:center;padding:28px;color:var(--text3);font-size:13px;font-family:'DM Mono',monospace;letter-spacing:1px}
+
+@media(max-width:900px){.tasks-row{grid-template-columns:1fr 1fr}.bottom-grid{grid-template-columns:1fr}.hero{grid-template-columns:auto 1fr}}
+@media(max-width:600px){.tasks-row{grid-template-columns:1fr}.week-grid{grid-template-columns:repeat(4,1fr)}.header{padding:0 16px}.wrap{padding:16px 14px 60px}}
+
+/* Date lock */
+.date-lock-notice{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);background:var(--bg-card3);border:1px solid var(--border-hi);padding:8px 12px;border-radius:8px;text-align:center;letter-spacing:.5px;width:100%;display:block}
+.not-today-ribbon{display:flex;align-items:center;gap:7px;background:rgba(61,77,101,.18);border:1px solid var(--border-hi);border-radius:7px;padding:7px 11px;margin-bottom:11px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;letter-spacing:.5px}
+.not-today-ribbon.future{border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.06);color:var(--amber)}
+.task-card.not-today{opacity:.8}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div>
+    <div class="brand-main">Connie's English</div>
+    <div class="brand-sub">Supervised by Jaco</div>
+  </div>
+  <div class="header-center">
+    <span class="hc-date" id="hdr-date"></span>
+    <span class="hc-week" id="hdr-week"></span>
+  </div>
+  <div class="header-right">
+    <span class="pending-badge" id="pending-badge">⏳ 0 待审核</span>
+    <button class="btn-sm jaco-mode-btn" id="jaco-mode-btn" onclick="toggleJacoMode()">Jaco 模式</button>
+    <button class="btn-sm" onclick="goToday()">今天</button>
+    <button class="btn-sm btn-danger" onclick="confirmReset()">重置</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-avatar">C</div>
+    <div>
+      <div class="hero-name">Connie</div>
+      <div class="hero-role">English Learner · CET-4 Prep</div>
+      <div class="hero-tags">
+        <span class="hero-tag">📖 60词/天</span>
+        <span class="hero-tag">📝 阅读×1/天</span>
+        <span class="hero-tag">🎧 听力×1/隔天</span>
+        <span class="hero-tag" id="hero-weekly-tag">本周 0 天全勤</span>
+      </div>
+    </div>
+    <div class="hero-score-block">
+      <div class="score-big" id="score-display">0</div>
+      <div class="score-label">已获积分</div>
+    </div>
+    <div>
+      <div class="score-streak" id="streak-display">🔥 连续 0 天</div>
+    </div>
+  </div>
+
+  <!-- JACO NOTE BAR -->
+  <div id="jaco-bar-wrap"></div>
+
+  <!-- REVIEW QUEUE (Jaco mode only) -->
+  <div class="review-queue" id="review-queue-panel" style="display:none">
+    <div class="panel-head">
+      <span class="panel-title" style="color:var(--amber)">⏳ 待 Jaco 审核的提交</span>
+      <span id="review-count" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)"></span>
+    </div>
+    <div id="review-list"></div>
+  </div>
+
+  <!-- WEEK STRIP -->
+  <div>
+    <div class="week-nav-row">
+      <span class="section-label">周进度 · <span id="week-range"></span></span>
+      <div style="display:flex;gap:8px">
+        <button class="nav-btn" onclick="changeWeek(-1)">‹ 上周</button>
+        <button class="nav-btn" onclick="changeWeek(1)">下周 ›</button>
+      </div>
+    </div>
+    <div class="week-grid" id="week-grid"></div>
+  </div>
+
+  <!-- TASKS -->
+  <div>
+    <div class="tasks-header">
+      <h2 id="tasks-heading">今日任务</h2>
+      <span class="date-chip" id="task-date-chip"></span>
+    </div>
+    <div class="tasks-row" id="tasks-row"></div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">本周完成率</span>
+        <span id="week-pts-label" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)"></span>
+      </div>
+      <div class="panel-body" id="stats-panel"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">提交记录</span>
+        <span id="log-count" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)"></span>
+      </div>
+      <div class="panel-body" style="padding:0 16px">
+        <div class="log-scroll" id="log-scroll"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="">
+  <div id="lightbox-meta"></div>
+</div>
+
+<!-- HIDDEN FILE INPUT -->
+<input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+
+<div id="toast-wrap"></div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────
+const PTS = { words:5, reading:7, listening:8 };
+const WDAYS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+const WDAYS_CN = ['周日','周一','周二','周三','周四','周五','周六'];
+const TASK_META = {
+  words:     { emoji:'📖', title:'单词任务',  sub:'背诵今日60个英语单词', freq:'每天' },
+  reading:   { emoji:'📝', title:'四级阅读',  sub:'完成一篇四级阅读理解', freq:'每天' },
+  listening: { emoji:'🎧', title:'四级听力',  sub:'完成一篇四级听力理解', freq:'每隔一天', special:true },
+};
+// Task status: 'none' | 'pending' | 'approved' | 'rejected'
+
+// ─── STATE ────────────────────────────────────────
+// tasks[weekKey][dN][taskKey] = { status, proofImg (base64), proofName, submittedAt }
+let S = {
+  tasks: {},
+  log: [],
+  weekOffset: 0,
+  viewDay: null,
+  note: '',
+  jacoMode: false,
+};
+let pendingUpload = null;
+
+function load(){
+  try{ const r=localStorage.getItem('connie-v3'); if(r) Object.assign(S,JSON.parse(r)); }catch(e){}
+}
+function save(){
+  localStorage.setItem('connie-v3', JSON.stringify(S));
+}
+
+// ─── DATE HELPERS ─────────────────────────────────
+function getWeekStart(off){
+  const d=new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()-d.getDay()+off*7); return d;
+}
+function weekKey(off){
+  const ws=getWeekStart(off);
+  const jan1=new Date(ws.getFullYear(),0,1);
+  const wn=Math.ceil((((ws-jan1)/86400000)+1)/7);
+  return `${ws.getFullYear()}-W${String(wn).padStart(2,'0')}`;
+}
+function dayDate(wo,di){ const ws=getWeekStart(wo); const d=new Date(ws); d.setDate(d.getDate()+di); return d; }
+function todayDayIdx(){ return new Date().getDay(); }
+function isHearingDay(wo,di){ const d=dayDate(wo,di); return Math.floor(d.getTime()/86400000)%2===0; }
+function fmtDate(d){ return `${d.getMonth()+1}月${d.getDate()}日`; }
+function fmtFull(d){ return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${WDAYS_CN[d.getDay()]}`; }
+
+// ─── TASK DATA ────────────────────────────────────
+function getDay(wo,di){
+  const wk=weekKey(wo); if(!S.tasks[wk]) S.tasks[wk]={};
+  const k=`d${di}`;
+  if(!S.tasks[wk][k]) S.tasks[wk][k]={
+    words:    {status:'none',proofImg:null,proofName:'',submittedAt:null},
+    reading:  {status:'none',proofImg:null,proofName:'',submittedAt:null},
+    listening:{status:'none',proofImg:null,proofName:'',submittedAt:null},
+  };
+  return S.tasks[wk][k];
+}
+function taskStatus(wo,di,key){ return getDay(wo,di)[key].status; }
+function isApproved(wo,di,key){ return taskStatus(wo,di,key)==='approved'; }
+
+function totalPts(){
+  let p=0;
+  for(const wk of Object.values(S.tasks))
+    for(const d of Object.values(wk))
+      for(const key of ['words','reading','listening'])
+        if(d[key].status==='approved') p+=PTS[key];
+  return p;
+}
+function streak(){
+  let n=0; const today=new Date(); today.setHours(0,0,0,0); let check=new Date(today);
+  while(true){
+    const di=check.getDay();
+    let wo=0;
+    for(let o=-52;o<=0;o++){
+      const ws=getWeekStart(o); const we=new Date(ws); we.setDate(we.getDate()+6);
+      if(check>=ws&&check<=we){wo=o;break;}
+    }
+    const t=getDay(wo,di); const hd=isHearingDay(wo,di);
+    const full=t.words.status==='approved'&&t.reading.status==='approved'&&(!hd||t.listening.status==='approved');
+    if(!full) break; n++; check.setDate(check.getDate()-1);
+  }
+  return n;
+}
+function weeklyFullDays(){
+  let n=0;
+  for(let i=0;i<7;i++){
+    const t=getDay(0,i); const hd=isHearingDay(0,i);
+    if(t.words.status==='approved'&&t.reading.status==='approved'&&(!hd||t.listening.status==='approved')) n++;
+  }
+  return n;
+}
+function pendingCount(){
+  let n=0;
+  for(const wk of Object.values(S.tasks))
+    for(const d of Object.values(wk))
+      for(const key of ['words','reading','listening'])
+        if(d[key].status==='pending') n++;
+  return n;
+}
+
+// ─── RENDER ───────────────────────────────────────
+function renderAll(){
+  renderHeader(); renderHero(); renderNoteBar();
+  renderWeekGrid(); renderTasks(); renderStats();
+  renderLog(); renderReviewQueue();
+}
+
+function renderNoteBar(){
+  const wrap = document.getElementById('jaco-bar-wrap');
+  const note = S.note || '';
+  if(S.jacoMode){
+    // Editable input for Jaco
+    wrap.innerHTML = `
+      <div class="jaco-bar">
+        <div class="jaco-icon">J</div>
+        <div style="flex:1">
+          <div class="jaco-note-label">Jaco 的备注</div>
+          <input type="text" id="jaco-note-input" placeholder="给 Connie 留个鼓励或提醒…" maxlength="80"
+            value="${note.replace(/"/g,'&quot;')}"
+            style="width:100%;background:var(--bg-card2);border:1px solid var(--border-hi);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:Inter,sans-serif;outline:none">
+        </div>
+        <button class="save-note-btn" onclick="saveNote()">保存</button>
+      </div>`;
+  } else {
+    // Read-only display for Connie — only show if there is a note
+    if(!note){
+      wrap.innerHTML = '';
+      return;
+    }
+    wrap.innerHTML = `
+      <div class="jaco-bar" style="cursor:default">
+        <div class="jaco-icon">J</div>
+        <div style="flex:1">
+          <div class="jaco-note-label">Jaco 对你说</div>
+          <div style="font-size:14px;color:var(--text);line-height:1.5">${note}</div>
+        </div>
+        <span style="font-size:20px">💬</span>
+      </div>`;
+  }
+}
+
+function renderHeader(){
+  const now=new Date();
+  document.getElementById('hdr-date').textContent=fmtFull(now);
+  const ws=getWeekStart(S.weekOffset); const we=new Date(ws); we.setDate(we.getDate()+6);
+  document.getElementById('hdr-week').textContent=`WEEK OF ${ws.getMonth()+1}/${ws.getDate()} – ${we.getMonth()+1}/${we.getDate()}`;
+  document.getElementById('week-range').textContent=`${ws.getMonth()+1}月${ws.getDate()}日 — ${we.getMonth()+1}月${we.getDate()}日`;
+
+  // pending badge
+  const pc=pendingCount();
+  const badge=document.getElementById('pending-badge');
+  badge.textContent=`⏳ ${pc} 待审核`;
+  badge.classList.toggle('show', pc>0);
+
+  // jaco mode btn
+  const btn=document.getElementById('jaco-mode-btn');
+  btn.classList.toggle('active', S.jacoMode);
+  btn.textContent = S.jacoMode ? '✓ Jaco 模式' : 'Jaco 模式';
+}
+
+function renderHero(){
+  document.getElementById('score-display').textContent=totalPts();
+  document.getElementById('streak-display').textContent=`🔥 连续 ${streak()} 天`;
+  document.getElementById('hero-weekly-tag').textContent=`本周 ${weeklyFullDays()} 天全勤`;
+}
+
+function renderWeekGrid(){
+  const cont=document.getElementById('week-grid');
+  const realToday=new Date(); realToday.setHours(0,0,0,0);
+  const curDayIdx=S.viewDay!==null?S.viewDay:todayDayIdx();
+  cont.innerHTML='';
+  for(let i=0;i<7;i++){
+    const d=dayDate(S.weekOffset,i); const t=getDay(S.weekOffset,i); const hd=isHearingDay(S.weekOffset,i);
+    const isToday=d.getTime()===realToday.getTime()&&S.weekOffset===0;
+    const isSelected=i===curDayIdx;
+    const fullDone=t.words.status==='approved'&&t.reading.status==='approved'&&(!hd||t.listening.status==='approved');
+    const pts=[
+      t.words.status==='approved'?PTS.words:0,
+      t.reading.status==='approved'?PTS.reading:0,
+      (hd&&t.listening.status==='approved')?PTS.listening:0,
+    ].reduce((a,b)=>a+b,0);
+
+    const pipClass=(s,avail)=>!avail?'na':s==='approved'?'done':s==='pending'?'pending':'';
+
+    const cell=document.createElement('div');
+    cell.className=`day-cell${isSelected?' selected':''}${isToday?' is-today':''}${fullDone?' full-done':''}`;
+    cell.onclick=()=>{S.viewDay=i;renderWeekGrid();renderTasks();};
+    cell.innerHTML=`
+      <span class="day-name">${WDAYS[i]}</span>
+      <span class="day-num-label">${d.getDate()}</span>
+      <div class="day-pip-row">
+        <div class="pip ${pipClass(t.words.status,true)}"></div>
+        <div class="pip ${pipClass(t.reading.status,true)}"></div>
+        <div class="pip ${pipClass(t.listening.status,hd)}"></div>
+      </div>
+      <div class="day-pts-badge">${pts>0?'+'+pts+'分':'–'}</div>`;
+    cont.appendChild(cell);
+  }
+}
+
+function renderTasks(){
+  const di=S.viewDay!==null?S.viewDay:todayDayIdx();
+  const d=dayDate(S.weekOffset,di); const t=getDay(S.weekOffset,di); const hd=isHearingDay(S.weekOffset,di);
+  const realToday=new Date(); realToday.setHours(0,0,0,0);
+  const isToday=d.getTime()===realToday.getTime()&&S.weekOffset===0;
+
+  document.getElementById('tasks-heading').textContent=isToday?'今日任务':'当日任务';
+  document.getElementById('task-date-chip').textContent=fmtFull(d);
+
+  const cont=document.getElementById('tasks-row');
+  cont.innerHTML='';
+
+  for(const [key,meta] of Object.entries(TASK_META)){
+    const avail=key==='listening'?hd:true;
+    const td=t[key]; const st=td.status;
+
+    const stateClass=st==='pending'?'state-pending':st==='approved'?'state-approved':st==='rejected'?'state-rejected':'';
+    const notTodayConnie = !isToday && !S.jacoMode;
+    const card=document.createElement('div');
+    card.className=`task-card pop-in ${stateClass}${!avail?' locked':''}${notTodayConnie?' not-today':''}`;
+
+    // not-today ribbon (Connie only)
+    let ribbonHtml='';
+    if(notTodayConnie){
+      const isPast = d.getTime() < realToday.getTime();
+      ribbonHtml = isPast
+        ? `<div class="not-today-ribbon">🔒 过去日期 — 仅可查看，不可提交</div>`
+        : `<div class="not-today-ribbon future">⏭ 未来日期 — 当天才可提交</div>`;
+    }
+
+    // status icon
+    const iconMap={pending:'⏳',approved:'✓',rejected:'✕'};
+    const statusIconHtml=st!=='none'?`<div class="task-status-icon">${iconMap[st]}</div>`:'';
+
+    // proof thumbnail
+    let thumbHtml='';
+    if(td.proofImg){
+      thumbHtml=`
+        <div class="proof-thumb-wrap" onclick="openLightbox('${key}',${di})">
+          <img src="${td.proofImg}" alt="证明">
+          <div class="proof-thumb-label">点击查看大图</div>
+        </div>`;
+    }
+
+    // status row text
+    const statusTexts={
+      pending:'⏳ 等待 Jaco 审核中…',
+      approved:'✓ Jaco 已审核通过',
+      rejected:'✕ Jaco 未通过 — 请重新提交',
+    };
+    const statusRowHtml=st!=='none'?`<div class="task-status-row">${statusTexts[st]}</div>`:'';
+
+    // action buttons
+    let actionsHtml='';
+    if(S.jacoMode){
+      // Jaco sees approve/reject for pending; revoke for approved
+      if(st==='pending'){
+        actionsHtml=`
+          <div class="task-actions">
+            <button class="btn-approve" onclick="approveTask('${key}',${di})">✓ 通过</button>
+            <button class="btn-reject" onclick="rejectTask('${key}',${di})">✕ 不通过</button>
+          </div>`;
+      } else if(st==='approved'){
+        actionsHtml=`<div class="task-actions"><button class="btn-revoke" onclick="revokeTask('${key}',${di})">撤销审核</button></div>`;
+      } else if(st==='rejected'||st==='none'){
+        actionsHtml=`<div class="task-actions"><div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-align:center;padding:8px 0">等待 Connie 提交</div></div>`;
+      }
+    } else {
+      // Connie: only today's tasks are submittable
+      if(!isToday){
+        // Non-today: show read-only status, no submit buttons
+        if(st==='none'){
+          actionsHtml=`<div class="task-actions"><div class="date-lock-notice">🔒 仅限当天提交</div></div>`;
+        } else if(st==='pending'){
+          actionsHtml=`<div class="task-actions"><div style="font-size:11px;color:var(--amber);font-family:'DM Mono',monospace;text-align:center;padding:6px 0;letter-spacing:.5px">⏳ 等待 Jaco 审核中</div></div>`;
+        } else if(st==='approved'){
+          actionsHtml=`<div class="task-actions"><div style="font-size:12px;color:var(--green);font-family:'DM Mono',monospace;text-align:center;padding:6px 0;letter-spacing:1px">🎉 +${PTS[key]}分 已入账</div></div>`;
+        } else if(st==='rejected'){
+          actionsHtml=`<div class="task-actions"><div class="date-lock-notice" style="border-color:var(--red-dim);color:var(--red)">🔒 已退回 · 无法补交</div></div>`;
+        }
+      } else {
+        // Today: full submit/upload controls
+        if(st==='none'||st==='rejected'){
+          actionsHtml=`
+            <div class="task-actions">
+              <button class="btn-upload" onclick="openUpload('${key}',${di})">
+                <span style="font-size:16px">📎</span> ${st==='rejected'?'重新上传证明':'上传完成证明'}
+              </button>
+            </div>`;
+        } else if(st==='pending'){
+          actionsHtml=`<div class="task-actions"><button class="btn-upload" onclick="openUpload('${key}',${di})" style="border-style:solid;border-color:var(--amber);color:var(--amber)"><span>📎</span> 更换证明图片</button></div>`;
+        } else if(st==='approved'){
+          actionsHtml=`<div class="task-actions"><div style="font-size:12px;color:var(--green);font-family:'DM Mono',monospace;text-align:center;padding:6px 0;letter-spacing:1px">🎉 +${PTS[key]}分 已入账</div></div>`;
+        }
+      }
+    }
+
+    card.innerHTML=`
+      ${statusIconHtml}
+      <span class="task-emoji">${meta.emoji}</span>
+      <div class="task-pts-badge">+${PTS[key]} 分</div>
+      <div class="task-title">${meta.title}</div>
+      <div class="task-sub">${meta.sub}</div>
+      <div class="task-freq${meta.special?' special':''}">${meta.freq}</div>
+      ${ribbonHtml}
+      ${thumbHtml}
+      ${statusRowHtml}
+      ${actionsHtml}
+      ${!avail?`<div class="locked-overlay"><span style="font-size:20px">🔒</span><span>今日无听力</span></div>`:''}
+    `;
+    cont.appendChild(card);
+  }
+}
+
+function renderReviewQueue(){
+  const panel=document.getElementById('review-queue-panel');
+  panel.style.display=S.jacoMode?'block':'none';
+  if(!S.jacoMode) return;
+
+  const list=document.getElementById('review-list');
+  const countEl=document.getElementById('review-count');
+
+  // collect all pending across all weeks/days
+  const pending=[];
+  for(const [wk,days] of Object.entries(S.tasks)){
+    for(const [dk,dayObj] of Object.entries(days)){
+      const di=parseInt(dk.slice(1));
+      // figure out weekOffset from wk string
+      for(let wo=-52;wo<=4;wo++){
+        if(weekKey(wo)===wk){
+          for(const [key,td] of Object.entries(dayObj)){
+            if(td.status==='pending'){
+              const d=dayDate(wo,di);
+              pending.push({wk,wo,di,key,td,dateStr:fmtDate(d),dayName:WDAYS_CN[di]});
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  countEl.textContent=`${pending.length} 条待审核`;
+
+  if(!pending.length){
+    list.innerHTML='<div class="empty-review">暂无待审核提交 ✓</div>';
+    return;
+  }
+
+  list.innerHTML=pending.map(p=>{
+    const proofImg = p.td.proofImg || null;
+    return `
+    <div class="review-item">
+      ${proofImg
+        ? `<img class="review-thumb" src="${proofImg}" alt="" onclick="openLightboxDirect('${proofImg}','${p.dateStr} ${TASK_META[p.key].title}')">`
+        : `<div style="width:52px;height:42px;border-radius:6px;background:var(--bg-card3);border:1px solid var(--border-hi);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${TASK_META[p.key].emoji}</div>`
+      }
+      <div class="review-info">
+        <div class="review-task-name">${TASK_META[p.key].emoji} ${TASK_META[p.key].title}</div>
+        <div class="review-meta">${p.dateStr} ${p.dayName} · ${p.td.proofName||'已上传图片'} · 提交于 ${p.td.submittedAt?new Date(p.td.submittedAt).toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'}):''}</div>
+      </div>
+      <div class="review-btns">
+        <button class="rbtn-approve" onclick="approveTask('${p.key}',${p.di},${p.wo})">✓ 通过</button>
+        <button class="rbtn-reject"  onclick="rejectTask('${p.key}',${p.di},${p.wo})">✕ 不通过</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderStats(){
+  const panel=document.getElementById('stats-panel');
+  const wk=weekKey(S.weekOffset); const tw=S.tasks[wk]||{};
+  let words=0,reading=0,listening=0,hearingDays=0;
+  for(let i=0;i<7;i++){
+    const k=`d${i}`; const d=tw[k]||{words:{status:'none'},reading:{status:'none'},listening:{status:'none'}};
+    if(d.words.status==='approved') words++;
+    if(d.reading.status==='approved') reading++;
+    if(d.listening.status==='approved') listening++;
+    if(isHearingDay(S.weekOffset,i)) hearingDays++;
+  }
+  const earnedPts=words*PTS.words+reading*PTS.reading+listening*PTS.listening;
+  const maxPts=7*PTS.words+7*PTS.reading+hearingDays*PTS.listening;
+  document.getElementById('week-pts-label').textContent=`已得 ${earnedPts} / ${maxPts} 分`;
+  const items=[
+    {name:'单词',sub:'目标 7/7 天',done:words,max:7},
+    {name:'阅读',sub:'目标 7/7 篇',done:reading,max:7},
+    {name:'听力',sub:`目标 ${hearingDays}/${hearingDays} 次`,done:listening,max:hearingDays},
+  ];
+  panel.innerHTML=items.map(it=>{
+    const pct=it.max>0?Math.round(it.done/it.max*100):0;
+    return `<div class="stat-item">
+      <div><div class="stat-name">${it.name}</div><div class="stat-sub">${it.sub}</div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+        <span class="stat-pct">${it.done}/${it.max}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderLog(){
+  const logEl=document.getElementById('log-scroll');
+  const entries=[...S.log].reverse().slice(0,50);
+  document.getElementById('log-count').textContent=`共 ${S.log.length} 条`;
+  if(!entries.length){
+    logEl.innerHTML='<div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">暂无记录</div>';
+    return;
+  }
+  logEl.innerHTML=entries.map(e=>{
+    const meta=TASK_META[e.task];
+    const timeStr=new Date(e.ts).toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'});
+    const statusLabel={pending:'待审核',approved:'已通过',rejected:'未通过'}[e.status]||'';
+    const ptsHtml=e.status==='approved'?`<span class="log-pts">+${e.pts}分</span>`:`<span class="log-pts muted">+${e.pts}分</span>`;
+    return `<div class="log-entry">
+      <span class="log-icon">${meta.emoji}</span>
+      <span class="log-text">${e.dayKey} · ${meta.title}</span>
+      <span class="log-status ${e.status}">${statusLabel}</span>
+      ${ptsHtml}
+      <span class="log-time">${timeStr}</span>
+    </div>`;
+  }).join('');
+}
+
+function openUpload(taskKey, dayIdx){
+  // Hard guard: Connie can only submit for today
+  if(!S.jacoMode){
+    const viewDate = dayDate(S.weekOffset, dayIdx);
+    const realToday = new Date(); realToday.setHours(0,0,0,0);
+    if(viewDate.getTime() !== realToday.getTime()){
+      showToast('🔒','只能提交今天的任务证明','',false,'var(--border-hi)');
+      return;
+    }
+  }
+  pendingUpload={taskKey, dayIdx, weekOffset: S.weekOffset};
+  document.getElementById('file-input').value='';
+  document.getElementById('file-input').click();
+}
+
+function handleFileSelect(event){
+  const file = event.target.files[0];
+  if(!file || !pendingUpload) return;
+
+  if(!file.type.startsWith('image/')){
+    showToast('❌','请上传图片文件（JPG / PNG / GIF）','',false,'var(--red-dim)');
+    return;
+  }
+
+  const {taskKey, dayIdx, weekOffset} = pendingUpload;
+  pendingUpload = null;
+
+  showToast('⏳','正在处理图片…','',false,'var(--bg-card3)');
+
+  // Use FileReader (works in all sandbox environments, no createObjectURL needed)
+  const reader = new FileReader();
+
+  reader.onload = function(e){
+    const rawDataUrl = e.target.result;
+
+    // Compress via canvas
+    const img = new Image();
+    img.onload = function(){
+      const MAX = 900;
+      let w = img.width, h = img.height;
+      if(w > MAX){ h = Math.round(h * MAX / w); w = MAX; }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+      let dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+      if(dataUrl.length > 800000) dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+      if(dataUrl.length > 800000) dataUrl = canvas.toDataURL('image/jpeg', 0.3);
+      // Last resort: use raw (uncompressed) if canvas fails to shrink
+      if(dataUrl.length > 1200000) dataUrl = rawDataUrl;
+
+      const t  = getDay(weekOffset, dayIdx);
+      const td = t[taskKey];
+      td.proofImg    = dataUrl;
+      td.proofName   = file.name;
+      td.submittedAt = Date.now();
+      td.status      = 'pending';
+
+      const d      = dayDate(weekOffset, dayIdx);
+      const dayKey = fmtDate(d);
+      const logEntry = {
+        id: Date.now()+'-'+Math.random().toString(36).slice(2,6),
+        ts: Date.now(), task: taskKey, status: 'pending',
+        pts: PTS[taskKey], dayKey, proofName: file.name
+      };
+      const existingIdx = S.log.findIndex(l => l.task===taskKey && l.dayKey===dayKey);
+      if(existingIdx >= 0) S.log[existingIdx] = logEntry;
+      else S.log.push(logEntry);
+
+      try {
+        save();
+      } catch(e){
+        td.proofImg = null;
+        save();
+        showToast('⚠️','图片太大无法保存，建议使用较小的截图','',false,'var(--amber-dim)');
+        renderAll();
+        return;
+      }
+      renderAll();
+      showToast(TASK_META[taskKey].emoji,'证明已提交，等待 Jaco 审核','⏳',false,'var(--amber-dim)');
+    };
+
+    img.onerror = function(){
+      showToast('❌','图片解析失败，请换一张图片重试','',false,'var(--red-dim)');
+    };
+
+    img.src = rawDataUrl;
+  };
+
+  reader.onerror = function(){
+    showToast('❌','文件读取失败，请重试','',false,'var(--red-dim)');
+  };
+
+  reader.readAsDataURL(file);
+}
+
+// ─── REVIEW ACTIONS ───────────────────────────────
+function approveTask(key, di, wo){
+  wo = (wo !== undefined) ? wo : S.weekOffset;
+  const t=getDay(wo,di); const td=t[key];
+  td.status='approved';
+  updateLogStatus(key,dayDate(wo,di),'approved');
+  save(); renderAll();
+  showToast(TASK_META[key].emoji,`已通过 ${TASK_META[key].title}`,`+${PTS[key]}分`,false,'var(--green-dim)');
+  const el=document.getElementById('score-display');
+  el.classList.remove('score-up'); void el.offsetWidth; el.classList.add('score-up');
+}
+
+function rejectTask(key, di, wo){
+  wo = (wo !== undefined) ? wo : S.weekOffset;
+  const t=getDay(wo,di); const td=t[key];
+  td.status='rejected';
+  td.proofImg=null;
+  updateLogStatus(key,dayDate(wo,di),'rejected');
+  save(); renderAll();
+  showToast(TASK_META[key].emoji,`未通过 ${TASK_META[key].title} — 请 Connie 重新提交`,'',false,'var(--red-dim)');
+}
+
+function revokeTask(key, di){
+  const t=getDay(S.weekOffset,di); const td=t[key];
+  td.status='none'; td.proofImg=null; td.proofName=''; td.submittedAt=null;
+  const d=dayDate(S.weekOffset,di); const dayKey=fmtDate(d);
+  S.log=S.log.filter(l=>!(l.task===key&&l.dayKey===dayKey));
+  save(); renderAll();
+  showToast('🔄','已撤销审核','',true,'');
+}
+
+function updateLogStatus(key,d,status){
+  const dayKey=fmtDate(d);
+  const entry=S.log.slice().reverse().find(l=>l.task===key&&l.dayKey===dayKey);
+  if(entry) entry.status=status;
+}
+
+// ─── LIGHTBOX ─────────────────────────────────────
+function openLightbox(key, di){
+  const t=getDay(S.weekOffset,di);
+  const td=t[key];
+  if(!td.proofImg) return;
+  openLightboxDirect(td.proofImg,`${fmtDate(dayDate(S.weekOffset,di))} · ${TASK_META[key].title} · ${td.proofName||''}`);
+}
+function openLightboxDirect(src,meta){
+  document.getElementById('lightbox-img').src=src;
+  document.getElementById('lightbox-meta').textContent=meta;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src='';
+}
+document.getElementById('lightbox').addEventListener('click',function(e){
+  if(e.target===this) closeLightbox();
+});
+
+// ─── JACO MODE ────────────────────────────────────
+function toggleJacoMode(){
+  S.jacoMode=!S.jacoMode; save(); renderAll();
+  showToast('🔑', S.jacoMode?'已切换到 Jaco 审核模式':'已切换到 Connie 视图','',false,S.jacoMode?'var(--gold-dim)':'var(--bg-card2)');
+}
+
+// ─── MISC ─────────────────────────────────────────
+function changeWeek(dir){ S.weekOffset+=dir; S.viewDay=null; save(); renderAll(); }
+function goToday(){ S.weekOffset=0; S.viewDay=null; save(); renderAll(); }
+function saveNote(){ const el=document.getElementById('jaco-note-input'); if(el){ S.note=el.value.trim(); save(); renderNoteBar(); showToast('📌','备注已保存','',false,''); } }
+function confirmReset(){ if(confirm('确定要清空所有数据吗？')) { localStorage.removeItem('connie-v3'); location.reload(); } }
+
+function showToast(icon,msg,pts,dim,borderColor){
+  const wrap=document.getElementById('toast-wrap');
+  const t=document.createElement('div');
+  t.className='toast';
+  if(borderColor) t.style.borderColor=borderColor;
+  t.innerHTML=`<span style="font-size:18px">${icon}</span><span style="font-size:13px;flex:1">${msg}</span>${pts?`<span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">${pts}</span>`:''}`;
+  wrap.appendChild(t);
+  setTimeout(()=>t.remove(),3600);
+}
+
+// ─── INIT ─────────────────────────────────────────
+load();
+// (migration removed)
+// note is rendered dynamically by renderNoteBar()
+renderAll();
+</script>
+</body>
+</html>
