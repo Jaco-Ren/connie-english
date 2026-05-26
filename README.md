@@ -1,14 +1,15 @@
-# Connie's English 学习监督系统
+# Connie's English Learning Tracker
 
-基于 Supabase + 纯 HTML 的在线英语学习打卡平台。
+An online English learning supervision platform built with Supabase and vanilla HTML/CSS/JS.
 
-## 功能
-- Connie 每日提交学习证明（单词 / 四级阅读 / 四级听力）
-- Jaco 审核通过后积分自动入账
-- 实时同步，两人异地均可访问
-- 积分系统：单词 +5分 / 阅读 +7分 / 听力 +8分
+## Features
+- Connie submits daily proof of completion (vocabulary / CET-4 reading / CET-4 listening)
+- Jaco reviews and approves submissions — points are awarded only after approval
+- Real-time sync via Supabase — accessible from anywhere
+- Points system: vocabulary +5 / reading +7 / listening +8
+- Weekly progress tracker with streak counter
 
-## 技术栈
-- 前端：纯 HTML + CSS + JS（无框架）
-- 后端：Supabase（数据库 + 存储 + 实时订阅）
-- 部署：Vercel
+## Tech Stack
+- Frontend: Vanilla HTML + CSS + JS (no framework)
+- Backend: Supabase (PostgreSQL + Storage + Realtime)
+- Deployment: Vercel
