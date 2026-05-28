@@ -13,3 +13,7 @@ An online English learning supervision platform built with Supabase and vanilla 
 - Frontend: Vanilla HTML + CSS + JS (no framework)
 - Backend: Supabase (PostgreSQL + Storage + Realtime)
 - Deployment: Vercel
+
+## Supabase Setup
+- Configuration guide: [docs/supabase-setup.md](docs/supabase-setup.md)
+- RLS script: [supabase/rls.sql](supabase/rls.sql)

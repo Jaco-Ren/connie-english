@@ -744,6 +744,8 @@ async function handleFile(event) {
       proof_url: publicData.publicUrl,
       proof_name: file.name,
       submitted_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
     };
     const { error } = await db.from('tasks').upsert(row, { onConflict: 'task_date,task_key' });
 
