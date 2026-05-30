@@ -708,8 +708,14 @@ body {
 }
 
 .log {
-  max-height: 290px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.log-rows {
+  display: flex;
+  flex-direction: column;
 }
 
 .log-row {
@@ -728,6 +734,35 @@ body {
 
 .log-points {
   color: var(--gold);
+}
+
+.log-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.log-page {
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid var(--hi);
+  border-radius: 8px;
+  background: var(--card2);
+  color: var(--muted);
+  cursor: pointer;
+  font: 700 12px Inter, sans-serif;
+}
+
+.log-page:hover {
+  border-color: var(--gold);
+  color: var(--gold2);
+}
+
+.log-page.active {
+  background: rgba(212, 168, 83, .14);
+  border-color: var(--gold);
+  color: var(--gold2);
 }
 
 .empty-state {

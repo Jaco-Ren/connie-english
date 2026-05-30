@@ -11,6 +11,7 @@ const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
 const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
 const REVIEW_LIST_LIMIT = 5;
+const LOG_PAGE_SIZE = 5;
 const W = Object.freeze(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']);
 const WC = Object.freeze(['周日', '周一', '周二', '周三', '周四', '周五', '周六']);
 const META = Object.freeze({
@@ -27,6 +28,7 @@ let note = '';
 let connieMsg = '';
 let weekOffset = 0;
 let viewDay = null;
+let logPage = 1;
 let pendingUpload = null;
 let realtimeChannel = null;
 
@@ -710,15 +712,21 @@ function renderStats() {
 }
 
 function renderLog() {
-  const list = tasks
+  const entries = tasks
     .filter((item) => item.submitted_at)
     .slice()
-    .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)))
-    .slice(0, 50);
+    .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)));
+  const pageCount = Math.max(1, Math.ceil(entries.length / LOG_PAGE_SIZE));
+  logPage = Math.min(Math.max(logPage, 1), pageCount);
 
-  document.getElementById('log-count').textContent = `${list.length} 条`;
-  document.getElementById('log').innerHTML = list.length
-    ? list.map((item) => {
+  const start = (logPage - 1) * LOG_PAGE_SIZE;
+  const list = entries.slice(start, start + LOG_PAGE_SIZE);
+
+  document.getElementById('log-count').textContent = `${entries.length} 条`;
+  document.getElementById('log').innerHTML = entries.length
+    ? `
+      <div class="log-rows">
+        ${list.map((item) => {
       const meta = metaFor(item.task_key);
       return `
         <div class="log-row">
@@ -728,8 +736,30 @@ function renderLog() {
           <span class="log-points">+${PTS[item.task_key] || 0}</span>
         </div>
       `;
-    }).join('')
+    }).join('')}
+      </div>
+      ${pageCount > 1 ? renderLogPagination(pageCount) : ''}
+    `
     : '<div class="empty-state">暂无记录</div>';
+}
+
+function renderLogPagination(pageCount) {
+  return `
+    <div class="log-pagination" aria-label="提交记录分页">
+      ${Array.from({ length: pageCount }, (_, index) => {
+    const page = index + 1;
+    const active = page === logPage ? ' active' : '';
+    return `<button class="log-page${active}" onclick="changeLogPage(${page})">${page}</button>`;
+  }).join('')}
+    </div>
+  `;
+}
+
+function changeLogPage(page) {
+  const nextPage = Number(page);
+  if (!Number.isInteger(nextPage) || nextPage < 1) return;
+  logPage = nextPage;
+  renderLog();
 }
 
 function changeWeek(offset) {
@@ -987,6 +1017,7 @@ Object.assign(window, {
   renderWeek,
   renderTasks,
   selectDay,
+  changeLogPage,
   changeWeek,
   goToday,
   upload,
