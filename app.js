@@ -10,6 +10,7 @@ const PTS = Object.freeze({ words: 5, reading: 7, listening: 8 });
 const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
 const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
+const REVIEW_LIST_LIMIT = 5;
 const W = Object.freeze(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']);
 const WC = Object.freeze(['周日', '周一', '周二', '周三', '周四', '周五', '周六']);
 const META = Object.freeze({
@@ -507,14 +508,14 @@ function renderReview() {
   panel.classList.remove('hidden');
 
   const pending = tasks.filter((item) => normalizeStatus(item.status) === 'pending');
-  const approved = tasks.filter((item) => normalizeStatus(item.status) === 'approved');
+  const visiblePending = pending.slice(0, REVIEW_LIST_LIMIT);
+  const countText = pending.length > visiblePending.length
+    ? `${visiblePending.length}/${pending.length} 条`
+    : `${pending.length} 条`;
 
-  document.getElementById('review-count').textContent = `${pending.length} 条`;
-  document.getElementById('review-list').innerHTML = (pending.length || approved.length)
-    ? [
-      ...pending.map(renderPendingReviewItem),
-      ...approved.map(renderApprovedReviewItem),
-    ].join('')
+  document.getElementById('review-count').textContent = countText;
+  document.getElementById('review-list').innerHTML = visiblePending.length
+    ? visiblePending.map(renderPendingReviewItem).join('')
     : '<div class="empty-state">暂无记录 ✓</div>';
 }
 
