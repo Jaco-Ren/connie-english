@@ -392,18 +392,27 @@ function renderNote() {
 function renderJacoNote() {
   return `
     <div class="note-section">
-      <div class="note-title">✏️ JACO 备注 — 给 Connie 留言</div>
-      <div class="note-row">
-        <input id="note-input" class="input note-input" value="${escapeAttr(note)}" placeholder="输入后点保存，Connie 登录后即可看到…">
-        <button class="btn gold no-wrap" onclick="saveNote()">💾 保存</button>
+      <div class="note-header">
+        <div>
+          <div class="note-kicker">Jaco Note</div>
+          <div class="note-heading">给 Connie 的留言</div>
+        </div>
+        <span class="note-pill">审核备注</span>
       </div>
-      ${note ? `<div class="current-note">当前内容：${escapeHTML(note)}</div>` : ''}
+      <div class="note-compose">
+        <label class="note-label" for="note-input">留言内容</label>
+        <div class="note-row">
+          <textarea id="note-input" class="input note-input note-textarea" rows="3" placeholder="写下今天要提醒 Connie 的话，保存后她登录就能看到。">${escapeHTML(note)}</textarea>
+          <button class="btn gold no-wrap note-save" onclick="saveNote()">保存</button>
+        </div>
+        ${note ? `<div class="current-note"><span>当前内容</span>${escapeHTML(note)}</div>` : ''}
+      </div>
       <div class="note-divider">
-        <div class="note-title purple">💬 CONNIE 对你说</div>
+        <div class="note-title purple">Connie 对你说</div>
         <div class="note-text">${connieMsg ? escapeHTML(connieMsg) : '<span class="note-muted">Connie 暂未留言</span>'}</div>
       </div>
       <div class="note-divider">
-        <div class="note-title amber">⚡ 手动加分 / 扣分</div>
+        <div class="note-title amber">手动加分 / 扣分</div>
         <div class="adjust-row">
           <input id="adj-pts" type="number" class="input adjust-points" placeholder="如 +5 或 -3">
           <input id="adj-reason" class="input adjust-reason" placeholder="原因（如：额外完成作业）">
@@ -418,19 +427,24 @@ function renderJacoNote() {
 function renderConnieNote() {
   return `
     <div class="note-section">
-      <div>
-        <div class="note-title">JACO 对你说</div>
+      <div class="note-header">
+        <div>
+          <div class="note-kicker">Jaco Note</div>
+          <div class="note-heading">Jaco 对你说</div>
+        </div>
+      </div>
+      <div class="note-compose">
         <div class="note-text">${note ? escapeHTML(note) : '<span class="note-muted">暂无备注</span>'}</div>
       </div>
       <div class="note-divider">
-        <div class="note-title purple">✏️ 给 JACO 留言</div>
+        <div class="note-title purple">给 Jaco 留言</div>
         <div class="note-row">
-          <input id="connie-msg-input" class="input note-input" value="${escapeAttr(connieMsg)}" placeholder="有什么想对 Jaco 说的…">
-          <button class="btn purple-btn no-wrap" onclick="saveConnieMsg()">💾 保存</button>
+          <textarea id="connie-msg-input" class="input note-input note-textarea compact" rows="2" placeholder="有什么想对 Jaco 说的...">${escapeHTML(connieMsg)}</textarea>
+          <button class="btn purple-btn no-wrap note-save" onclick="saveConnieMsg()">保存</button>
         </div>
-        ${connieMsg ? `<div class="current-note">当前内容：${escapeHTML(connieMsg)}</div>` : ''}
+        ${connieMsg ? `<div class="current-note"><span>当前内容</span>${escapeHTML(connieMsg)}</div>` : ''}
       </div>
-      ${adjustments.length ? `<div class="note-divider"><div class="note-title amber">⚡ Jaco 调分记录</div>${renderAdjustmentList(false)}</div>` : ''}
+      ${adjustments.length ? `<div class="note-divider"><div class="note-title amber">Jaco 调分记录</div>${renderAdjustmentList(false)}</div>` : ''}
     </div>
   `;
 }
