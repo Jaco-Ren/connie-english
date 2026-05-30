@@ -39,8 +39,8 @@ check (role in ('connie', 'jaco'));
 | `task_date` | `date` | Part of unique key with `task_key` |
 | `task_key` | `text` | `words`, `reading`, or `listening` |
 | `status` | `text` | `pending`, `approved`, or `rejected` |
-| `proof_url` | `text` | Public Storage URL |
-| `proof_name` | `text` | Original uploaded filename |
+| `proof_url` | `text` | Public Storage URL, or a JSON array of public Storage URLs for multi-image proof |
+| `proof_name` | `text` | Original uploaded filename, or a JSON array of filenames for multi-image proof |
 | `submitted_at` | `timestamptz` | Set by frontend |
 | `reviewed_at` | `timestamptz` | Set when Jaco reviews |
 | `reviewed_by` | `uuid` | Jaco user id |
@@ -118,6 +118,8 @@ After applying [supabase/rls.sql](../supabase/rls.sql):
 ## Storage Notes
 
 The current frontend calls `getPublicUrl()` and stores the returned URL in `tasks.proof_url`, so the `proofs` bucket is configured as public in the RLS script.
+
+For `reading` and `listening`, the frontend allows multiple proof images. To avoid a database migration, multi-image rows store `proof_url` and `proof_name` as JSON arrays in the existing `text` columns. Single-image rows can still store plain text, and the frontend supports both formats.
 
 That means anyone who has a proof image URL can view that image. If proof images need to be private later, change the frontend to use signed URLs before making the bucket private.
 

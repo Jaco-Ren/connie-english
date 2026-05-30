@@ -8,6 +8,7 @@ const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PTS = Object.freeze({ words: 5, reading: 7, listening: 8 });
 const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
+const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
 const W = Object.freeze(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']);
 const WC = Object.freeze(['周日', '周一', '周二', '周三', '周四', '周五', '周六']);
@@ -83,6 +84,73 @@ function safeImageUrl(url) {
   }
 
   return '';
+}
+
+function parseStoredList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+
+  const text = String(value).trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    if (typeof parsed === 'string') return [parsed].filter(Boolean);
+  } catch (_) {
+    return [text];
+  }
+
+  return [text];
+}
+
+function serializeStoredList(values) {
+  const cleaned = values.map((value) => String(value || '').trim()).filter(Boolean);
+  if (cleaned.length <= 1) return cleaned[0] || null;
+  return JSON.stringify(cleaned);
+}
+
+function proofEntries(item) {
+  const urls = parseStoredList(item?.proof_url).map(safeImageUrl).filter(Boolean);
+  const names = parseStoredList(item?.proof_name);
+
+  return urls.map((url, index) => ({
+    url,
+    name: names[index] || names[0] || '',
+  }));
+}
+
+function proofSummary(item) {
+  const proofs = proofEntries(item);
+  if (!proofs.length) return '';
+
+  const names = proofs.map((proof) => proof.name).filter(Boolean);
+  if (proofs.length === 1) return names[0] || '1 张证明';
+  if (!names.length) return `${proofs.length} 张证明`;
+  return `${proofs.length} 张：${names.join('、')}`;
+}
+
+function renderProofImages(item, mode = 'task') {
+  const proofs = proofEntries(item);
+  if (!proofs.length) return '';
+
+  const className = mode === 'review' ? 'proof-grid review-proofs' : 'proof-grid task-proofs';
+  const imageClass = mode === 'review' ? 'review-thumb' : 'thumb';
+  const images = proofs.map((proof, index) => `
+    <img
+      class="${imageClass}"
+      src="${imgSrcAttr(proof.url)}"
+      onclick="showImg('${jsArgAttr(proof.url)}')"
+      alt="提交证明 ${index + 1}"
+      title="${escapeAttr(proof.name || `提交证明 ${index + 1}`)}"
+    >
+  `).join('');
+
+  return `<div class="${className}">${images}</div>`;
+}
+
+function allowsMultipleProofs(key) {
+  return MULTI_PROOF_TASKS.includes(key);
 }
 
 function imgSrcAttr(url) {
@@ -452,17 +520,13 @@ function renderReview() {
 
 function renderPendingReviewItem(item) {
   const meta = metaFor(item.task_key);
-  const proofUrl = safeImageUrl(item.proof_url);
-  const image = proofUrl
-    ? `<img src="${imgSrcAttr(proofUrl)}" onclick="showImg('${jsArgAttr(proofUrl)}')" alt="提交证明">`
-    : '';
 
   return `
     <div class="review-item">
-      ${image}
+      ${renderProofImages(item, 'review')}
       <div class="review-main">
         <b>${meta.emoji} ${escapeHTML(meta.title)}</b>
-        <div class="sub">${escapeHTML(item.task_date)} · ${escapeHTML(item.proof_name || '')}</div>
+        <div class="sub">${escapeHTML(item.task_date)} · ${escapeHTML(proofSummary(item))}</div>
       </div>
       <button class="btn green" onclick="review('${jsArgAttr(item.task_date)}','${jsArgAttr(item.task_key)}','approved')">通过</button>
       <button class="btn red" onclick="review('${jsArgAttr(item.task_date)}','${jsArgAttr(item.task_key)}','rejected')">不通过</button>
@@ -543,10 +607,7 @@ function renderTaskCard(key, date, dayIndex, isToday) {
   const available = key !== 'listening' || hear(dayIndex);
   const currentTask = task(date, key);
   const status = normalizeStatus(currentTask.status);
-  const proofUrl = safeImageUrl(currentTask.proof_url);
-  const image = proofUrl
-    ? `<img class="thumb" src="${imgSrcAttr(proofUrl)}" onclick="showImg('${jsArgAttr(proofUrl)}')" alt="提交证明">`
-    : '';
+  const proofImages = renderProofImages(currentTask);
 
   return `
     <div class="task ${status} ${available ? '' : 'lock'}">
@@ -555,7 +616,7 @@ function renderTaskCard(key, date, dayIndex, isToday) {
       <h3>${escapeHTML(meta.title)}</h3>
       <p>${escapeHTML(meta.sub)}</p>
       <div class="freq">${escapeHTML(meta.freq)}</div>
-      ${image}
+      ${proofImages}
       <div class="status">${taskStatusText(status)}</div>
       ${taskActions(key, date, dayIndex, status, available, isToday)}
     </div>
@@ -590,7 +651,9 @@ function taskActions(key, date, dayIndex, status, available, isToday) {
   if (!isToday) return '<div class="status">仅限当天提交</div>';
   if (status === 'approved') return '<div class="status green-text">✓ 已通过，积分已入账</div>';
 
-  const label = status === 'pending' ? '更换证明' : '上传完成证明';
+  const label = status === 'pending'
+    ? (allowsMultipleProofs(key) ? '更换证明图片' : '更换证明')
+    : (allowsMultipleProofs(key) ? '上传完成证明图片' : '上传完成证明');
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${label}</button>`;
 }
 
@@ -669,8 +732,10 @@ function goToday() {
 function upload(key, dayIndex) {
   if (!requireConnie()) return;
   pendingUpload = { key, dayIndex };
-  document.getElementById('file').value = '';
-  document.getElementById('file').click();
+  const fileInput = document.getElementById('file');
+  fileInput.multiple = allowsMultipleProofs(key);
+  fileInput.value = '';
+  fileInput.click();
 }
 
 function compress(file) {
@@ -710,13 +775,7 @@ function compress(file) {
 }
 
 async function handleFile(event) {
-  const file = event.target.files[0];
-  if (!file || !pendingUpload) return;
-  if (!file.type.startsWith('image/')) {
-    toast('请选择图片文件');
-    return;
-  }
-
+  if (!pendingUpload) return;
   const { key, dayIndex } = pendingUpload;
   if (!TASK_KEYS.includes(key)) {
     toast('未知任务类型');
@@ -724,25 +783,50 @@ async function handleFile(event) {
     return;
   }
 
+  let files = Array.from(event.target.files || []);
+  if (!files.length) {
+    pendingUpload = null;
+    return;
+  }
+
+  if (!allowsMultipleProofs(key)) {
+    files = files.slice(0, 1);
+  }
+
+  if (files.some((file) => !file.type.startsWith('image/'))) {
+    toast('请选择图片文件');
+    pendingUpload = null;
+    return;
+  }
+
   const date = dayDate(dayIndex);
-  toast('正在上传图片…');
+  toast(files.length > 1 ? `正在上传 ${files.length} 张图片…` : '正在上传图片…');
 
   try {
-    const blob = await compress(file);
-    const path = `${ymd(date)}/${key}-${Date.now()}.jpg`;
-    const { error: uploadError } = await db.storage
-      .from('proofs')
-      .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+    const urls = [];
+    const names = [];
 
-    if (uploadError) throw uploadError;
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const blob = await compress(file);
+      const path = `${ymd(date)}/${key}-${Date.now()}-${index + 1}.jpg`;
+      const { error: uploadError } = await db.storage
+        .from('proofs')
+        .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
 
-    const { data: publicData } = db.storage.from('proofs').getPublicUrl(path);
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = db.storage.from('proofs').getPublicUrl(path);
+      urls.push(publicData.publicUrl);
+      names.push(file.name);
+    }
+
     const row = {
       task_date: ymd(date),
       task_key: key,
       status: 'pending',
-      proof_url: publicData.publicUrl,
-      proof_name: file.name,
+      proof_url: serializeStoredList(urls),
+      proof_name: serializeStoredList(names),
       submitted_at: new Date().toISOString(),
       reviewed_at: null,
       reviewed_by: null,
@@ -750,7 +834,7 @@ async function handleFile(event) {
     const { error } = await db.from('tasks').upsert(row, { onConflict: 'task_date,task_key' });
 
     if (error) throw error;
-    toast('已提交，等待 Jaco 审核');
+    toast(files.length > 1 ? `已提交 ${files.length} 张图片，等待 Jaco 审核` : '已提交，等待 Jaco 审核');
   } catch (err) {
     toast('上传失败：' + err.message);
   }
