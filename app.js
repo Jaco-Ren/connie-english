@@ -10,6 +10,9 @@ const PTS = Object.freeze({ words: 5, reading: 7, listening: 8 });
 const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
 const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
+const REVIEW_STATUSES = Object.freeze(['approved', 'rejected']);
+const NOTE_SEPARATOR = '|||';
+const TASK_UPSERT_OPTIONS = Object.freeze({ onConflict: 'task_date,task_key' });
 const REVIEW_LIST_LIMIT = 5;
 const LOG_PAGE_SIZE = 5;
 const W = Object.freeze(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']);
@@ -294,7 +297,7 @@ async function loadAll() {
   tasks = taskRes.data || [];
   adjustments = adjRes.data || [];
 
-  const parts = (noteRes.data?.content || '').split('|||');
+  const parts = (noteRes.data?.content || '').split(NOTE_SEPARATOR);
   note = parts[0] || '';
   connieMsg = parts[1] || '';
 
@@ -486,7 +489,7 @@ async function saveNote() {
   const content = document.getElementById('note-input').value.trim();
   const { error } = await db.from('notes').upsert({
     id: 1,
-    content: content + '|||' + connieMsg,
+    content: `${content}${NOTE_SEPARATOR}${connieMsg}`,
     updated_at: new Date().toISOString(),
   });
 
@@ -505,7 +508,7 @@ async function saveConnieMsg() {
   const msg = document.getElementById('connie-msg-input').value.trim();
   const { error } = await db.from('notes').upsert({
     id: 1,
-    content: note + '|||' + msg,
+    content: `${note}${NOTE_SEPARATOR}${msg}`,
     updated_at: new Date().toISOString(),
   });
 
@@ -549,23 +552,15 @@ function renderPendingReviewItem(item) {
         <b>${meta.emoji} ${escapeHTML(meta.title)}</b>
         <div class="sub">${escapeHTML(item.task_date)} · ${escapeHTML(proofSummary(item))}</div>
       </div>
-      <button class="btn green" onclick="review('${jsArgAttr(item.task_date)}','${jsArgAttr(item.task_key)}','approved')">通过</button>
-      <button class="btn red" onclick="review('${jsArgAttr(item.task_date)}','${jsArgAttr(item.task_key)}','rejected')">不通过</button>
+      ${renderReviewButtons(item.task_date, item.task_key)}
     </div>
   `;
 }
 
-function renderApprovedReviewItem(item) {
-  const meta = metaFor(item.task_key);
+function renderReviewButtons(date, key) {
   return `
-    <div class="review-item">
-      <div class="review-icon">${meta.emoji}</div>
-      <div class="review-main">
-        <b class="approved-title">✓ ${escapeHTML(meta.title)}</b>
-        <div class="sub">${escapeHTML(item.task_date)} · 已通过</div>
-      </div>
-      <button class="btn muted-btn" onclick="revoke('${jsArgAttr(item.task_date)}','${jsArgAttr(item.task_key)}')">撤销通过</button>
-    </div>
+    <button class="btn green" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','approved')">通过</button>
+    <button class="btn red" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','rejected')">不通过</button>
   `;
 }
 
@@ -655,15 +650,14 @@ function taskActions(key, date, dayIndex, status, available, isToday) {
   if (!available) return '<div class="status">今日无听力</div>';
 
   if (isJaco()) {
+    const dateKey = ymd(date);
+
     if (status === 'pending') {
-      return `
-        <button class="btn green" onclick="review('${jsArgAttr(ymd(date))}','${jsArgAttr(key)}','approved')">通过</button>
-        <button class="btn red" onclick="review('${jsArgAttr(ymd(date))}','${jsArgAttr(key)}','rejected')">不通过</button>
-      `;
+      return renderReviewButtons(dateKey, key);
     }
 
     if (status === 'approved') {
-      return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(ymd(date))}','${jsArgAttr(key)}')">撤销通过</button>`;
+      return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
     }
 
     return '<div class="status">等待 Connie 提交</div>';
@@ -849,6 +843,7 @@ async function handleFile(event) {
   }
 
   const date = dayDate(dayIndex);
+  const dateKey = ymd(date);
   toast(files.length > 1 ? `正在上传 ${files.length} 张图片…` : '正在上传图片…');
 
   try {
@@ -858,7 +853,7 @@ async function handleFile(event) {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
       const blob = await compress(file);
-      const path = `${ymd(date)}/${key}-${Date.now()}-${index + 1}.jpg`;
+      const path = `${dateKey}/${key}-${Date.now()}-${index + 1}.jpg`;
       const { error: uploadError } = await db.storage
         .from('proofs')
         .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
@@ -871,7 +866,7 @@ async function handleFile(event) {
     }
 
     const row = {
-      task_date: ymd(date),
+      task_date: dateKey,
       task_key: key,
       status: 'pending',
       proof_url: serializeStoredList(urls),
@@ -880,7 +875,7 @@ async function handleFile(event) {
       reviewed_at: null,
       reviewed_by: null,
     };
-    const { error } = await db.from('tasks').upsert(row, { onConflict: 'task_date,task_key' });
+    const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
     if (error) throw error;
     toast(files.length > 1 ? `已提交 ${files.length} 张图片，等待 Jaco 审核` : '已提交，等待 Jaco 审核');
@@ -894,7 +889,7 @@ async function handleFile(event) {
 
 async function review(date, key, status) {
   if (!requireJaco()) return;
-  if (!TASK_KEYS.includes(key) || !['approved', 'rejected'].includes(status)) {
+  if (!TASK_KEYS.includes(key) || !REVIEW_STATUSES.includes(status)) {
     toast('审核参数无效');
     return;
   }
@@ -912,7 +907,7 @@ async function review(date, key, status) {
     row.proof_name = null;
   }
 
-  const { error } = await db.from('tasks').upsert(row, { onConflict: 'task_date,task_key' });
+  const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
   if (error) {
     toast('审核失败：' + error.message);
     return;
@@ -936,7 +931,7 @@ async function revoke(date, key) {
     reviewed_at: null,
     reviewed_by: null,
   };
-  const { error } = await db.from('tasks').upsert(row, { onConflict: 'task_date,task_key' });
+  const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
   if (error) {
     toast('撤销失败：' + error.message);
@@ -950,8 +945,10 @@ async function revoke(date, key) {
 async function adjustScore() {
   if (!requireJaco()) return;
 
-  const points = parseInt(document.getElementById('adj-pts').value, 10);
-  const reason = document.getElementById('adj-reason').value.trim();
+  const pointsInput = document.getElementById('adj-pts');
+  const reasonInput = document.getElementById('adj-reason');
+  const points = parseInt(pointsInput.value, 10);
+  const reason = reasonInput.value.trim();
 
   if (Number.isNaN(points) || points === 0) {
     toast('请输入有效的分数');
@@ -970,8 +967,8 @@ async function adjustScore() {
   }
 
   toast(points > 0 ? `✓ 已加 ${points} 分` : `✓ 已扣 ${Math.abs(points)} 分`);
-  document.getElementById('adj-pts').value = '';
-  document.getElementById('adj-reason').value = '';
+  pointsInput.value = '';
+  reasonInput.value = '';
   await loadAll();
 }
 

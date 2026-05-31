@@ -793,26 +793,8 @@ body {
   padding: 12px 0;
 }
 
-.review-item img {
-  width: 54px;
-  height: 44px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--hi);
-  cursor: pointer;
-}
-
-.review-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
 .review-main {
   flex: 1;
-}
-
-.approved-title {
-  color: var(--green);
 }
 
 .muted-btn {
@@ -887,10 +869,6 @@ body {
 
   .note-header {
     flex-direction: column;
-  }
-
-  .note-row {
-    grid-template-columns: 1fr;
   }
 
   .note-save {
