@@ -402,12 +402,14 @@ function renderJacoNote() {
         <span class="note-pill">审核备注</span>
       </div>
       <div class="note-compose">
-        <label class="note-label" for="note-input">留言内容</label>
+        <div class="note-field-head">
+          <label class="note-label" for="note-input">留言内容</label>
+          ${note ? '<span class="saved-chip">已保存</span>' : ''}
+        </div>
         <div class="note-row">
           <textarea id="note-input" class="input note-input note-textarea" rows="3" placeholder="写下今天要提醒 Connie 的话，保存后她登录就能看到。">${escapeHTML(note)}</textarea>
           <button class="btn gold no-wrap note-save" onclick="saveNote()">保存</button>
         </div>
-        ${note ? `<div class="current-note"><span>当前内容</span>${escapeHTML(note)}</div>` : ''}
       </div>
       <div class="note-divider">
         <div class="note-title purple">Connie 对你说</div>
@@ -439,12 +441,14 @@ function renderConnieNote() {
         <div class="note-text">${note ? escapeHTML(note) : '<span class="note-muted">暂无备注</span>'}</div>
       </div>
       <div class="note-divider">
-        <div class="note-title purple">给 Jaco 留言</div>
+        <div class="note-field-head">
+          <div class="note-title purple">给 Jaco 留言</div>
+          ${connieMsg ? '<span class="saved-chip purple">已保存</span>' : ''}
+        </div>
         <div class="note-row">
           <textarea id="connie-msg-input" class="input note-input note-textarea compact" rows="2" placeholder="有什么想对 Jaco 说的...">${escapeHTML(connieMsg)}</textarea>
           <button class="btn purple-btn no-wrap note-save" onclick="saveConnieMsg()">保存</button>
         </div>
-        ${connieMsg ? `<div class="current-note"><span>当前内容</span>${escapeHTML(connieMsg)}</div>` : ''}
       </div>
       ${adjustments.length ? `<div class="note-divider"><div class="note-title amber">Jaco 调分记录</div>${renderAdjustmentList(false)}</div>` : ''}
     </div>

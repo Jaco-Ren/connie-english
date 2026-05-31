@@ -291,6 +291,35 @@ body {
   font-weight: 700;
 }
 
+.note-field-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.note-field-head .note-title {
+  margin-bottom: 0;
+}
+
+.saved-chip {
+  border: 1px solid rgba(212, 168, 83, .24);
+  border-radius: 999px;
+  background: rgba(212, 168, 83, .08);
+  color: var(--gold2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.saved-chip.purple {
+  border-color: rgba(167, 139, 250, .28);
+  background: rgba(167, 139, 250, .08);
+  color: var(--purple);
+}
+
 .note-divider {
   border-top: 1px solid rgba(126, 143, 168, .18);
   padding-top: 20px;
@@ -322,23 +351,6 @@ body {
 
 .note-muted {
   color: var(--muted);
-}
-
-.current-note {
-  border-left: 3px solid rgba(212, 168, 83, .42);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-  padding: 6px 0 6px 14px;
-  white-space: pre-wrap;
-}
-
-.current-note span {
-  color: var(--gold2);
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 2px;
 }
 
 .adjust-row {
