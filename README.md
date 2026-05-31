@@ -1,52 +1,54 @@
 # Connie's English Learning Tracker
 
+**Language:** English | [Simplified Chinese](README.zh-CN.md)
+
 ![Vanilla JS](https://img.shields.io/badge/Frontend-Vanilla%20JS-f7df1e?logo=javascript&logoColor=111)
 ![Supabase](https://img.shields.io/badge/Backend-Supabase-3ecf8e?logo=supabase&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-000?logo=vercel)
 ![Status](https://img.shields.io/badge/Status-Online%20Tracker-4c6fff)
 
-一个给 Connie 使用、由 Jaco 监督审核的英语学习打卡系统。Connie 每天提交单词、四级阅读、四级听力的完成证明；Jaco 在线审核后才会计入积分，并可以通过留言和手动调分辅助监督。
+An English learning check-in and review system for Connie, supervised by Jaco. Connie submits daily proof for vocabulary, CET-4 reading, and CET-4 listening tasks. Jaco reviews each submission online, and points are awarded only after approval.
 
-项目使用原生 HTML/CSS/JavaScript 构建，后端依赖 Supabase Auth、PostgreSQL、Storage、Realtime 和 Row Level Security。没有前端框架，也没有构建步骤，适合作为一个轻量的在线学习监督工具。
+The project is built with vanilla HTML, CSS, and JavaScript. The backend uses Supabase Auth, PostgreSQL, Storage, Realtime, and Row Level Security. There is no frontend framework and no build step, which keeps the app lightweight and easy to deploy as a static site.
 
-## 功能概览
+## Features
 
-| 模块 | 当前实现 |
+| Module | Current implementation |
 | --- | --- |
-| 登录与角色 | Supabase Auth 登录后读取 `profiles.role`，自动切换 Connie 提交界面或 Jaco 审核界面 |
-| 每日任务 | 单词 `+5`、四级阅读 `+7`、四级听力 `+8`；听力按隔天节奏显示 |
-| 证明提交 | Connie 可上传图片证明；阅读和听力支持多张证明图 |
-| 图片处理 | 前端压缩为 JPEG，最大宽度 1000px，降低上传体积 |
-| 审核流程 | Jaco 可通过、退回、撤销通过；只有 `approved` 任务计入积分 |
-| 积分系统 | 自动统计任务积分，并叠加 Jaco 的手动加分/扣分 |
-| 留言系统 | Jaco 可给 Connie 留审核备注，Connie 也可给 Jaco 留言 |
-| 周进度 | 展示本周完成率、全勤天数、连续全勤天数和提交记录 |
-| 实时同步 | `tasks`、`notes`、`score_adjustments` 变化后两端实时刷新 |
-| 权限保护 | Supabase RLS 区分 Connie 与 Jaco 的可读写范围 |
+| Login and roles | Supabase Auth login with `profiles.role`, switching between Connie's submission UI and Jaco's review UI |
+| Daily tasks | Vocabulary `+5`, CET-4 reading `+7`, CET-4 listening `+8`; listening follows an every-other-day schedule |
+| Proof submission | Connie can upload image proof; reading and listening support multiple proof images |
+| Image processing | Browser-side JPEG compression with a maximum width of 1000px |
+| Review workflow | Jaco can approve, reject, or revoke approval; only `approved` tasks count toward points |
+| Points system | Task points are calculated automatically and combined with manual score adjustments |
+| Notes | Jaco can leave notes for Connie, and Connie can leave messages for Jaco |
+| Weekly progress | Weekly completion rate, full-attendance days, streak counter, and submission log |
+| Realtime sync | `tasks`, `notes`, and `score_adjustments` changes refresh both roles automatically |
+| Security | Supabase RLS separates Connie and Jaco permissions |
 
-## 角色工作流
+## Role Workflow
 
 ### Connie
 
-1. 登录 Connie 账号。
-2. 查看今日任务和本周进度。
-3. 上传完成证明图片。
-4. 等待 Jaco 审核。
-5. 审核通过后获得积分；退回后可重新提交。
-6. 查看 Jaco 留言，也可以给 Jaco 留言。
+1. Sign in with the Connie account.
+2. Review today's tasks and weekly progress.
+3. Upload proof images after completing tasks.
+4. Wait for Jaco's review.
+5. Receive points after approval, or resubmit if rejected.
+6. Read Jaco's notes and leave a message when needed.
 
 ### Jaco
 
-1. 登录 Jaco 账号。
-2. 查看待审核任务列表。
-3. 打开证明图片检查完成情况。
-4. 选择通过或不通过。
-5. 必要时撤销通过、手动加分/扣分。
-6. 给 Connie 写当天提醒或反馈。
+1. Sign in with the Jaco account.
+2. Check the pending review panel.
+3. Open proof images and verify completion.
+4. Approve or reject each submission.
+5. Revoke approval or apply manual score adjustments when needed.
+6. Leave reminders or feedback for Connie.
 
-## 技术栈
+## Tech Stack
 
-| 层级 | 技术 |
+| Layer | Technology |
 | --- | --- |
 | Frontend | Vanilla HTML + CSS + JavaScript |
 | Auth | Supabase Auth |
@@ -56,91 +58,91 @@
 | Security | Supabase Row Level Security |
 | Deployment | Vercel static site |
 
-## 项目结构
+## Project Structure
 
 ```text
 .
-├── index.html                 # 页面骨架、登录区、主应用容器
-├── styles.css                 # 响应式界面样式
-├── app.js                     # 业务逻辑、渲染、上传、审核、实时同步
+├── index.html                 # Page shell, login view, and app container
+├── styles.css                 # Responsive UI styles
+├── app.js                     # Rendering, upload, review, scoring, and realtime logic
 ├── docs/
-│   └── supabase-setup.md      # Supabase 表结构、RLS 和测试说明
+│   └── supabase-setup.md      # Supabase schema, RLS, and smoke-test notes
 └── supabase/
-    └── rls.sql                # 可重复执行的 RLS / Storage / Realtime 配置脚本
+    └── rls.sql                # Re-runnable RLS, Storage, and Realtime setup script
 ```
 
-## 核心数据表
+## Core Tables
 
-| 表 | 用途 |
+| Table | Purpose |
 | --- | --- |
-| `profiles` | 绑定 Supabase Auth 用户和业务角色：`connie` / `jaco` |
-| `tasks` | 保存每天每类任务的提交状态、证明图片、提交时间和审核信息 |
-| `notes` | 保存 Jaco 给 Connie 的备注，以及 Connie 给 Jaco 的留言 |
-| `score_adjustments` | 保存 Jaco 的手动加分/扣分记录 |
+| `profiles` | Connects Supabase Auth users to app roles: `connie` or `jaco` |
+| `tasks` | Stores daily task status, proof images, submission time, and review metadata |
+| `notes` | Stores Jaco's note for Connie and Connie's message for Jaco |
+| `score_adjustments` | Stores Jaco's manual point additions and deductions |
 
-详细字段、约束和权限策略见 [docs/supabase-setup.md](docs/supabase-setup.md)。
+See [docs/supabase-setup.md](docs/supabase-setup.md) for the expected columns, constraints, and permission policies.
 
-## 本地运行
+## Local Usage
 
-这个项目不需要安装依赖。
+This project does not require dependency installation.
 
-1. 克隆仓库。
-2. 用浏览器打开 `index.html`。
-3. 确保浏览器可以访问 Supabase CDN 和 Google Fonts。
-4. 使用已经在 Supabase 中创建并绑定角色的 Connie/Jaco 账号登录。
+1. Clone the repository.
+2. Open `index.html` in a browser.
+3. Make sure the browser can access the Supabase CDN and Google Fonts.
+4. Sign in with Connie or Jaco accounts that already exist in Supabase and have matching profile roles.
 
-也可以使用任意静态服务器运行，例如 VS Code Live Server、Vercel CLI 或其他本地 HTTP server。
+You can also serve the project with any static server, such as VS Code Live Server, Vercel CLI, or another local HTTP server.
 
-## Supabase 配置
+## Supabase Setup
 
-前端当前在 `app.js` 中直接读取：
+The frontend currently reads Supabase configuration directly from `app.js`:
 
 ```js
 const SUPABASE_URL = '...';
 const SUPABASE_KEY = '...';
 ```
 
-如果复用这个项目，需要替换成自己的 Supabase project URL 和 publishable key。publishable key 可以暴露在浏览器端，真正的权限边界由 RLS 策略控制。
+If you reuse this project, replace these values with your own Supabase project URL and publishable key. The publishable key is safe to use in the browser; the actual permission boundary is enforced by RLS policies.
 
-完整配置流程：
+Setup flow:
 
-1. 在 Supabase 创建项目。
-2. 创建 Connie 和 Jaco 两个 Auth 用户。
-3. 创建 `profiles`、`tasks`、`notes`、`score_adjustments` 表。
-4. 在 `profiles` 中写入两个用户的角色。
-5. 执行 [supabase/rls.sql](supabase/rls.sql)。
-6. 按 [docs/supabase-setup.md](docs/supabase-setup.md) 的 Smoke Test 验证 Connie 提交和 Jaco 审核流程。
+1. Create a Supabase project.
+2. Create one Connie Auth user and one Jaco Auth user.
+3. Create the `profiles`, `tasks`, `notes`, and `score_adjustments` tables.
+4. Insert the corresponding role rows into `profiles`.
+5. Run [supabase/rls.sql](supabase/rls.sql).
+6. Follow the smoke test in [docs/supabase-setup.md](docs/supabase-setup.md) to verify Connie submission and Jaco review.
 
-## 部署
+## Deployment
 
-项目可以作为静态站点部署到 Vercel：
+The app can be deployed to Vercel as a static site:
 
-1. 将仓库导入 Vercel。
-2. Framework Preset 选择 `Other` 或保持静态默认配置。
-3. Build Command 留空。
-4. Output Directory 留空或使用项目根目录。
-5. 部署完成后，用 Connie/Jaco 账号测试登录、上传、审核和实时同步。
+1. Import the repository into Vercel.
+2. Choose `Other` as the framework preset, or keep the default static configuration.
+3. Leave the Build Command empty.
+4. Leave the Output Directory empty, or use the project root.
+5. After deployment, test login, upload, review, and realtime sync with both roles.
 
-## 安全说明
+## Security Notes
 
-- 浏览器端只使用 Supabase publishable key。
-- 所有核心权限依赖 Supabase RLS，而不是前端按钮隐藏。
-- Connie 只能提交或替换 `pending/rejected` 任务，不能从浏览器修改已通过任务。
-- Jaco 可以审核、撤销通过、创建或删除手动调分记录。
-- `proofs` bucket 当前是 public，因为前端会保存公开图片 URL。
-- 如果未来证明图片需要隐私保护，应改为私有 bucket，并在前端使用 signed URL。
+- The browser only uses a Supabase publishable key.
+- Core authorization relies on Supabase RLS, not hidden frontend buttons.
+- Connie can submit or replace `pending/rejected` tasks, but cannot update approved tasks from the browser client.
+- Jaco can review tasks, revoke approval, and create or delete manual score adjustments.
+- The `proofs` bucket is currently public because the frontend stores public image URLs.
+- If proof images need stronger privacy later, switch to a private bucket and use signed URLs in the frontend.
 
-## 当前限制
+## Current Limitations
 
-- `notes.content` 目前用 `|||` 同时保存双方留言；更理想的结构是拆成 `jaco_note` 和 `connie_message` 两列。
-- Supabase URL 和 publishable key 目前写在 `app.js` 中；多人复用时建议改成部署环境变量注入。
-- 当前是单 Connie、单 Jaco 的监督模式；如果要支持多学生，需要给 `tasks`、`notes`、`score_adjustments` 增加 owner/student 维度。
-- 提交证明图片目前保存 public URL；隐私要求更高时需要迁移到 signed URL。
+- `notes.content` currently stores both messages with a `|||` separator. A cleaner schema would split this into `jaco_note` and `connie_message`.
+- The Supabase URL and publishable key are currently hardcoded in `app.js`. For broader reuse, consider injecting them through deployment-time environment configuration.
+- The app currently models one Connie and one Jaco. Supporting multiple learners would require adding an owner or student dimension to `tasks`, `notes`, and `score_adjustments`.
+- Proof images are stored as public URLs. Higher privacy requirements would require signed URL support.
 
-## 后续可优化
+## Roadmap Ideas
 
-- 增加 README 截图或 GIF，展示 Connie 端和 Jaco 端界面。
-- 将备注表拆字段，移除 `|||` 分隔符。
-- 增加任务模板配置，让任务名称、频率和分值可在数据库中维护。
-- 增加月度统计、连续打卡排行榜或导出功能。
-- 增加更细的上传进度和失败重试提示。
+- Add README screenshots or a GIF showing the Connie and Jaco views.
+- Split the notes schema and remove the `|||` delimiter.
+- Move task names, schedule, and point values into database-managed configuration.
+- Add monthly reports, streak history, or export features.
+- Improve upload progress and retry feedback.
