@@ -83,7 +83,40 @@ grant usage, select on all sequences in schema public to authenticated;
 
 alter table public.tasks
 add column if not exists late_submit_unlocked_at timestamptz,
-add column if not exists late_submit_unlocked_by uuid;
+add column if not exists late_submit_unlocked_by uuid,
+add column if not exists custom_title text,
+add column if not exists custom_points integer,
+add column if not exists custom_created_by uuid;
+
+alter table public.tasks
+drop constraint if exists tasks_task_key_check;
+
+alter table public.tasks
+add constraint tasks_task_key_check
+check (
+  task_key in ('words', 'reading', 'listening')
+  or task_key ~ '^custom-[a-z0-9-]+$'
+);
+
+alter table public.tasks
+drop constraint if exists tasks_custom_task_fields_check;
+
+alter table public.tasks
+add constraint tasks_custom_task_fields_check
+check (
+  (
+    task_key in ('words', 'reading', 'listening')
+    and custom_title is null
+    and custom_points is null
+    and custom_created_by is null
+  )
+  or (
+    task_key ~ '^custom-[a-z0-9-]+$'
+    and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+    and custom_points between 1 and 100
+    and custom_created_by is not null
+  )
+);
 
 alter table public.profiles enable row level security;
 alter table public.tasks enable row level security;
@@ -115,10 +148,25 @@ for insert
 to authenticated
 with check (
   public.is_connie()
-  and task_key in ('words', 'reading', 'listening')
   and status = 'pending'
   and reviewed_at is null
   and reviewed_by is null
+  and (
+    (
+      task_key in ('words', 'reading', 'listening')
+      and custom_title is null
+      and custom_points is null
+      and custom_created_by is null
+    )
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+      and custom_points between 1 and 100
+      and custom_created_by = auth.uid()
+      and proof_url is null
+      and proof_name is null
+    )
+  )
 );
 
 drop policy if exists "tasks_update_connie_resubmit" on public.tasks;
@@ -129,13 +177,35 @@ to authenticated
 using (
   public.is_connie()
   and status in ('pending', 'rejected')
+  and (
+    task_key in ('words', 'reading', 'listening')
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and custom_created_by = auth.uid()
+    )
+  )
 )
 with check (
   public.is_connie()
-  and task_key in ('words', 'reading', 'listening')
   and status = 'pending'
   and reviewed_at is null
   and reviewed_by is null
+  and (
+    (
+      task_key in ('words', 'reading', 'listening')
+      and custom_title is null
+      and custom_points is null
+      and custom_created_by is null
+    )
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+      and custom_points between 1 and 100
+      and custom_created_by = auth.uid()
+      and proof_url is null
+      and proof_name is null
+    )
+  )
 );
 
 -- Jaco uses upsert() in the current frontend. Allow insert as well as update so
@@ -148,8 +218,21 @@ for insert
 to authenticated
 with check (
   public.is_jaco()
-  and task_key in ('words', 'reading', 'listening')
   and status in ('pending', 'approved', 'rejected')
+  and (
+    (
+      task_key in ('words', 'reading', 'listening')
+      and custom_title is null
+      and custom_points is null
+      and custom_created_by is null
+    )
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+      and custom_points between 1 and 100
+      and custom_created_by is not null
+    )
+  )
 );
 
 drop policy if exists "tasks_update_jaco_review" on public.tasks;
@@ -160,8 +243,21 @@ to authenticated
 using (public.is_jaco())
 with check (
   public.is_jaco()
-  and task_key in ('words', 'reading', 'listening')
   and status in ('pending', 'approved', 'rejected')
+  and (
+    (
+      task_key in ('words', 'reading', 'listening')
+      and custom_title is null
+      and custom_points is null
+      and custom_created_by is null
+    )
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+      and custom_points between 1 and 100
+      and custom_created_by is not null
+    )
+  )
 );
 
 drop policy if exists "notes_select_authenticated" on public.notes;

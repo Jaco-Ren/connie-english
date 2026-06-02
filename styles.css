@@ -660,6 +660,38 @@ body {
   border-color: rgba(111, 99, 168, .34);
 }
 
+.task.custom-task-card {
+  border-color: rgba(111, 99, 168, .28);
+}
+
+.task.custom-task-card .pts {
+  background: rgba(111, 99, 168, .1);
+  border-color: rgba(111, 99, 168, .2);
+  color: var(--purple);
+}
+
+.custom-task-form {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(232, 244, 242, .74)),
+    var(--card);
+  border-style: dashed;
+}
+
+.custom-task-form .emoji {
+  color: var(--teal);
+  font-weight: 800;
+}
+
+.custom-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.custom-fields .input {
+  margin-top: 0;
+}
+
 .task.lock {
   opacity: .58;
 }

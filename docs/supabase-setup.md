@@ -37,7 +37,7 @@ check (role in ('connie', 'jaco'));
 | Column | Expected type | Notes |
 | --- | --- | --- |
 | `task_date` | `date` | Part of unique key with `task_key` |
-| `task_key` | `text` | `words`, `reading`, or `listening` |
+| `task_key` | `text` | `words`, `reading`, `listening`, or a generated `custom-*` key |
 | `status` | `text` | `pending`, `approved`, or `rejected` |
 | `proof_url` | `text` | Public Storage URL, or a JSON array of public Storage URLs for multi-image proof |
 | `proof_name` | `text` | Original uploaded filename, or a JSON array of filenames for multi-image proof |
@@ -46,17 +46,40 @@ check (role in ('connie', 'jaco'));
 | `reviewed_by` | `uuid` | Jaco user id |
 | `late_submit_unlocked_at` | `timestamptz` | Set when Jaco opens a past task for Connie to submit |
 | `late_submit_unlocked_by` | `uuid` | Jaco user id that opened the late submission |
+| `custom_title` | `text` | Title for a Connie-created custom daily task |
+| `custom_points` | `integer` | Connie-requested points for a custom daily task |
+| `custom_created_by` | `uuid` | Connie user id that created the custom task |
 
 Recommended constraints:
 
 ```sql
 alter table public.tasks
 add constraint tasks_task_key_check
-check (task_key in ('words', 'reading', 'listening'));
+check (
+  task_key in ('words', 'reading', 'listening')
+  or task_key ~ '^custom-[a-z0-9-]+$'
+);
 
 alter table public.tasks
 add constraint tasks_status_check
 check (status in ('pending', 'approved', 'rejected'));
+
+alter table public.tasks
+add constraint tasks_custom_task_fields_check
+check (
+  (
+    task_key in ('words', 'reading', 'listening')
+    and custom_title is null
+    and custom_points is null
+    and custom_created_by is null
+  )
+  or (
+    task_key ~ '^custom-[a-z0-9-]+$'
+    and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+    and custom_points between 1 and 100
+    and custom_created_by is not null
+  )
+);
 
 alter table public.tasks
 add constraint tasks_task_date_task_key_key
@@ -69,6 +92,15 @@ Late submission unlock columns can be added to an existing project with:
 alter table public.tasks
 add column if not exists late_submit_unlocked_at timestamptz,
 add column if not exists late_submit_unlocked_by uuid;
+```
+
+Custom task columns can be added to an existing project with:
+
+```sql
+alter table public.tasks
+add column if not exists custom_title text,
+add column if not exists custom_points integer,
+add column if not exists custom_created_by uuid;
 ```
 
 ### `public.notes`
@@ -119,7 +151,9 @@ After applying [supabase/rls.sql](../supabase/rls.sql):
 - Each user can read only their own row in `profiles`.
 - Connie can create or replace pending task submissions.
 - Connie cannot modify approved task rows from the browser client.
+- Connie can create pending `custom-*` tasks with a title, point value, and owner; the frontend only exposes this for the current day.
 - Jaco can approve, reject, revoke approval, or open a past task for late submission.
+- Jaco approval of a custom task adds its `custom_points` to Connie's score and shows it in the daily task list.
 - Both known roles can read and update the shared `notes` row.
 - Only Jaco can create or delete score adjustments.
 - Connie can upload proof images to the `proofs` bucket.
@@ -153,5 +187,7 @@ After running the script:
 4. Log in as Jaco.
 5. Approve the pending task.
 6. Confirm Connie's score increases after refresh or realtime sync.
-7. Try creating a score adjustment as Connie through the browser console or API; it should fail.
-8. Try submitting a replacement proof for an approved task as Connie; it should fail.
+7. Log in as Connie and use the custom task card to declare an extra same-day task with a point value.
+8. Log in as Jaco, approve that custom task, and confirm it appears in Connie's daily task list with its points counted.
+9. Try creating a score adjustment as Connie through the browser console or API; it should fail.
+10. Try submitting a replacement proof for an approved task as Connie; it should fail.

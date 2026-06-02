@@ -11,6 +11,11 @@ const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
 const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
 const REVIEW_STATUSES = Object.freeze(['approved', 'rejected']);
+const CUSTOM_TASK_PREFIX = 'custom-';
+const CUSTOM_TASK_KEY_PATTERN = /^custom-[a-z0-9-]+$/;
+const CUSTOM_TITLE_MAX = 40;
+const CUSTOM_POINTS_MIN = 1;
+const CUSTOM_POINTS_MAX = 100;
 const NOTE_SEPARATOR = '|||';
 const TASK_UPSERT_OPTIONS = Object.freeze({ onConflict: 'task_date,task_key' });
 const REVIEW_LIST_LIMIT = 5;
@@ -70,6 +75,37 @@ function normalizeStatus(status) {
 function safeNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function isCustomTaskKey(key) {
+  return CUSTOM_TASK_KEY_PATTERN.test(String(key || ''));
+}
+
+function isValidTaskKey(key) {
+  return TASK_KEYS.includes(key) || isCustomTaskKey(key);
+}
+
+function isCustomTask(itemOrKey) {
+  const key = typeof itemOrKey === 'string' ? itemOrKey : itemOrKey?.task_key;
+  return isCustomTaskKey(key);
+}
+
+function pointsFor(itemOrKey) {
+  if (typeof itemOrKey === 'object' && isCustomTask(itemOrKey)) {
+    return Math.max(0, Math.trunc(safeNumber(itemOrKey.custom_points)));
+  }
+
+  const key = typeof itemOrKey === 'string' ? itemOrKey : itemOrKey?.task_key;
+  return PTS[key] || 0;
+}
+
+function customTaskTitle(item) {
+  return String(item?.custom_title || '').trim() || 'Connie 自定义任务';
+}
+
+function createCustomTaskKey() {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${CUSTOM_TASK_PREFIX}${Date.now()}-${suffix}`;
 }
 
 function safeId(value) {
@@ -168,7 +204,16 @@ function jsArgAttr(value) {
   return escapeAttr(escapeJsArg(value));
 }
 
-function metaFor(key) {
+function metaFor(key, item = null) {
+  if (isCustomTaskKey(key)) {
+    return {
+      emoji: '✨',
+      title: customTaskTitle(item),
+      sub: 'Connie 自主申报的今日加分任务',
+      freq: '今日申报',
+    };
+  }
+
   return META[key] || { emoji: '•', title: '未知任务', sub: '', freq: '' };
 }
 
@@ -208,7 +253,31 @@ function hear(dayIndex, off = weekOffset) {
 
 function task(date, key) {
   const row = tasks.find((item) => item.task_date === ymd(date) && item.task_key === key);
-  return row ? { ...row, status: normalizeStatus(row.status) } : { status: 'none' };
+  return row ? { ...row, status: normalizeStatus(row.status) } : { task_date: ymd(date), task_key: key, status: 'none' };
+}
+
+function taskByDateKey(dateKey, key) {
+  return tasks.find((item) => item.task_date === dateKey && item.task_key === key) || null;
+}
+
+function keepCustomTaskFields(row) {
+  if (!isCustomTaskKey(row.task_key)) return row;
+
+  const existing = taskByDateKey(row.task_date, row.task_key);
+  if (!existing) return row;
+
+  row.custom_title = existing.custom_title;
+  row.custom_points = existing.custom_points;
+  row.custom_created_by = existing.custom_created_by;
+  return row;
+}
+
+function customTasksForDate(date) {
+  const dateKey = ymd(date);
+  return tasks
+    .filter((item) => item.task_date === dateKey && isCustomTask(item))
+    .slice()
+    .sort((a, b) => String(a.submitted_at || '').localeCompare(String(b.submitted_at || '')));
 }
 
 function hasLateSubmitUnlockColumns(item) {
@@ -384,7 +453,7 @@ function renderHero() {
   let points = 0;
   tasks.forEach((item) => {
     if (normalizeStatus(item.status) === 'approved') {
-      points += PTS[item.task_key] || 0;
+      points += pointsFor(item);
     }
   });
   adjustments.forEach((item) => {
@@ -577,14 +646,17 @@ function renderReview() {
 }
 
 function renderPendingReviewItem(item) {
-  const meta = metaFor(item.task_key);
+  const meta = metaFor(item.task_key, item);
+  const details = isCustomTask(item)
+    ? `${item.task_date} · 自定义加分 · +${pointsFor(item)} 分`
+    : `${item.task_date} · ${proofSummary(item)}`;
 
   return `
     <div class="review-item">
       ${renderProofImages(item, 'review')}
       <div class="review-main">
         <b>${meta.emoji} ${escapeHTML(meta.title)}</b>
-        <div class="sub">${escapeHTML(item.task_date)} · ${escapeHTML(proofSummary(item))}</div>
+        <div class="sub">${escapeHTML(details)}</div>
       </div>
       ${renderReviewButtons(item.task_date, item.task_key)}
     </div>
@@ -646,6 +718,14 @@ function renderTasks() {
   TASK_KEYS.forEach((key) => {
     element.insertAdjacentHTML('beforeend', renderTaskCard(key, date, dayIndex, isToday));
   });
+
+  customTasksForDate(date).forEach((item) => {
+    element.insertAdjacentHTML('beforeend', renderTaskCard(item.task_key, date, dayIndex, isToday, item));
+  });
+
+  if (isToday && !isJaco()) {
+    element.insertAdjacentHTML('beforeend', renderCustomTaskForm(dayIndex));
+  }
 }
 
 function selectDay(dayIndex) {
@@ -654,20 +734,22 @@ function selectDay(dayIndex) {
   renderTasks();
 }
 
-function renderTaskCard(key, date, dayIndex, isToday) {
-  const meta = metaFor(key);
-  const available = key !== 'listening' || hear(dayIndex);
-  const currentTask = task(date, key);
+function renderTaskCard(key, date, dayIndex, isToday, item = null) {
+  const currentTask = item ? { ...item, status: normalizeStatus(item.status) } : task(date, key);
+  const custom = isCustomTask(currentTask);
+  const meta = metaFor(key, currentTask);
+  const available = custom || key !== 'listening' || hear(dayIndex);
   const status = normalizeStatus(currentTask.status);
   const lateUnlocked = isLateSubmitUnlocked(currentTask);
   const proofImages = renderProofImages(currentTask);
+  const pointValue = pointsFor(currentTask);
 
   return `
-    <div class="task ${status} ${lateUnlocked ? 'unlocked' : ''} ${available ? '' : 'lock'}">
+    <div class="task ${status} ${lateUnlocked ? 'unlocked' : ''} ${available ? '' : 'lock'} ${custom ? 'custom-task-card' : ''}">
       <div class="task-main">
         <div class="task-headline">
           <div class="emoji">${meta.emoji}</div>
-          <div class="pts">+${PTS[key]} 分</div>
+          <div class="pts">+${pointValue} 分</div>
         </div>
         <h3>${escapeHTML(meta.title)}</h3>
         <p>${escapeHTML(meta.sub)}</p>
@@ -682,6 +764,31 @@ function renderTaskCard(key, date, dayIndex, isToday) {
   `;
 }
 
+function renderCustomTaskForm(dayIndex) {
+  return `
+    <div class="task custom-task-form">
+      <div class="task-main">
+        <div class="task-headline">
+          <div class="emoji">＋</div>
+          <div class="pts">自定分值</div>
+        </div>
+        <h3>申报今日加分任务</h3>
+        <p>写下今天额外完成的学习任务，设置分值后提交给 Jaco 审核。</p>
+        <div class="custom-fields">
+          <input id="custom-task-title" class="input" maxlength="${CUSTOM_TITLE_MAX}" placeholder="任务名称，如：完成一套四级翻译">
+          <input id="custom-task-points" class="input" type="number" min="${CUSTOM_POINTS_MIN}" max="${CUSTOM_POINTS_MAX}" placeholder="加几分">
+        </div>
+      </div>
+      <div class="task-footer">
+        <div class="status status-idle">审核通过后入账</div>
+        <div class="task-actions">
+          <button class="btn gold" onclick="submitCustomTask(${dayIndex})">申报给 Jaco</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function taskStatusClass(status, item) {
   if (isLateSubmitUnlocked(item)) return 'status-unlocked';
   if (status === 'pending') return 'status-pending';
@@ -691,6 +798,13 @@ function taskStatusClass(status, item) {
 }
 
 function taskStatusText(status, item) {
+  if (isCustomTask(item)) {
+    if (status === 'pending') return '等待 Jaco 审核加分';
+    if (status === 'approved') return 'Jaco 已通过，积分已入账';
+    if (status === 'rejected') return 'Jaco 未通过';
+    return '尚未申报';
+  }
+
   if (isLateSubmitUnlocked(item)) return 'Jaco 已开放补交';
   if (status === 'pending') return '等待 Jaco 审核';
   if (status === 'approved') return 'Jaco 已通过';
@@ -712,6 +826,10 @@ function uploadLabel(key, status, isToday) {
 
 function taskActions(key, date, dayIndex, status, available, isToday, currentTask) {
   if (!available) return '<div class="task-action-note">今日无听力</div>';
+
+  if (isCustomTask(currentTask)) {
+    return customTaskActions(key, date, status);
+  }
 
   if (isJaco()) {
     const dateKey = ymd(date);
@@ -743,9 +861,37 @@ function taskActions(key, date, dayIndex, status, available, isToday, currentTas
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${label}</button>`;
 }
 
+function customTaskActions(key, date, status) {
+  const dateKey = ymd(date);
+
+  if (isJaco()) {
+    if (status === 'pending') {
+      return renderReviewButtons(dateKey, key);
+    }
+
+    if (status === 'approved') {
+      return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
+    }
+
+    if (status === 'rejected') {
+      return '<div class="task-action-note">已退回 Connie</div>';
+    }
+
+    return '<div class="task-action-note">等待 Connie 申报</div>';
+  }
+
+  if (status === 'pending') return '<div class="task-action-note">已申报，等待 Jaco 审核</div>';
+  if (status === 'approved') return '<div class="task-action-note action-success">自定义积分已入账</div>';
+  if (status === 'rejected') return '<div class="task-action-note">未通过，可重新申报</div>';
+  return '<div class="task-action-note">尚未申报</div>';
+}
+
 function renderStats() {
   let earned = 0;
   let max = 0;
+  let customEarned = 0;
+  const weekFrom = ymd(dayDate(0));
+  const weekTo = ymd(dayDate(6));
 
   const items = TASK_KEYS.map((key) => {
     let done = 0;
@@ -765,7 +911,20 @@ function renderStats() {
     return { name: metaFor(key).title.replace('任务', ''), done, target };
   });
 
-  document.getElementById('week-pts').textContent = `已得 ${earned}/${max} 分`;
+  tasks.forEach((item) => {
+    if (
+      isCustomTask(item)
+      && normalizeStatus(item.status) === 'approved'
+      && item.task_date >= weekFrom
+      && item.task_date <= weekTo
+    ) {
+      customEarned += pointsFor(item);
+    }
+  });
+
+  document.getElementById('week-pts').textContent = customEarned
+    ? `基础 ${earned}/${max} 分 · 自定义 +${customEarned}`
+    : `已得 ${earned}/${max} 分`;
   document.getElementById('stats').innerHTML = items.map((item) => `
     <div class="stat">
       <div>
@@ -796,13 +955,13 @@ function renderLog() {
     ? `
       <div class="log-rows">
         ${list.map((item) => {
-      const meta = metaFor(item.task_key);
+      const meta = metaFor(item.task_key, item);
       return `
         <div class="log-row">
           <span>${meta.emoji}</span>
           <span class="log-title">${escapeHTML(item.task_date)} · ${escapeHTML(meta.title)}</span>
           <span>${escapeHTML(normalizeStatus(item.status))}</span>
-          <span class="log-points">+${PTS[item.task_key] || 0}</span>
+          <span class="log-points">+${pointsFor(item)}</span>
         </div>
       `;
     }).join('')}
@@ -840,6 +999,60 @@ async function changeWeek(offset) {
 async function goToday() {
   weekOffset = 0;
   viewDay = null;
+  await loadAll();
+}
+
+async function submitCustomTask(dayIndex) {
+  if (!requireConnie()) return;
+
+  const date = dayDate(dayIndex);
+  const dateKey = ymd(date);
+  if (weekOffset !== 0 || dateKey !== ymd(new Date())) {
+    toast('只能申报今天的自定义任务');
+    return;
+  }
+
+  const titleInput = document.getElementById('custom-task-title');
+  const pointsInput = document.getElementById('custom-task-points');
+  const title = titleInput.value.trim();
+  const points = parseInt(pointsInput.value, 10);
+
+  if (!title || title.length > CUSTOM_TITLE_MAX) {
+    toast(`请输入 1-${CUSTOM_TITLE_MAX} 个字的任务名称`);
+    return;
+  }
+
+  if (!Number.isInteger(points) || points < CUSTOM_POINTS_MIN || points > CUSTOM_POINTS_MAX) {
+    toast(`加分需在 ${CUSTOM_POINTS_MIN}-${CUSTOM_POINTS_MAX} 分之间`);
+    return;
+  }
+
+  const row = clearLateSubmitUnlock({
+    task_date: dateKey,
+    task_key: createCustomTaskKey(),
+    status: 'pending',
+    custom_title: title,
+    custom_points: points,
+    custom_created_by: session.user.id,
+    proof_url: null,
+    proof_name: null,
+    submitted_at: new Date().toISOString(),
+    reviewed_at: null,
+    reviewed_by: null,
+  });
+
+  const { error } = await db.from('tasks').insert(row);
+  if (error) {
+    const setupHint = /custom_|task_key|row-level security|constraint/i.test(String(error.message || ''))
+      ? '（请先在 Supabase SQL Editor 执行 supabase/rls.sql）'
+      : '';
+    toast(`申报失败：${error.message}${setupHint}`);
+    return;
+  }
+
+  toast('已申报给 Jaco，等待审核');
+  titleInput.value = '';
+  pointsInput.value = '';
   await loadAll();
 }
 
@@ -1018,18 +1231,18 @@ async function unlockLateSubmit(date, key) {
 
 async function review(date, key, status) {
   if (!requireJaco()) return;
-  if (!TASK_KEYS.includes(key) || !REVIEW_STATUSES.includes(status)) {
+  if (!isValidTaskKey(key) || !REVIEW_STATUSES.includes(status)) {
     toast('审核参数无效');
     return;
   }
 
-  const row = clearLateSubmitUnlock({
+  const row = keepCustomTaskFields(clearLateSubmitUnlock({
     task_date: date,
     task_key: key,
     status,
     reviewed_at: new Date().toISOString(),
     reviewed_by: session.user.id,
-  });
+  }));
 
   if (status === 'rejected') {
     row.proof_url = null;
@@ -1048,18 +1261,18 @@ async function review(date, key, status) {
 
 async function revoke(date, key) {
   if (!requireJaco()) return;
-  if (!TASK_KEYS.includes(key)) {
+  if (!isValidTaskKey(key)) {
     toast('任务类型无效');
     return;
   }
 
-  const row = clearLateSubmitUnlock({
+  const row = keepCustomTaskFields(clearLateSubmitUnlock({
     task_date: date,
     task_key: key,
     status: 'pending',
     reviewed_at: null,
     reviewed_by: null,
-  });
+  }));
   const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
   if (error) {
@@ -1150,6 +1363,7 @@ Object.assign(window, {
   changeLogPage,
   changeWeek,
   goToday,
+  submitCustomTask,
   upload,
   handleFile,
   unlockLateSubmit,
