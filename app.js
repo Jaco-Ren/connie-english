@@ -386,7 +386,7 @@ function renderHero() {
     date.setDate(date.getDate() - 1);
   }
 
-  document.getElementById('streak').textContent = `🔥 连续 ${streak} 天`;
+  document.getElementById('streak').textContent = `连续 ${streak} 天`;
 }
 
 function renderNote() {
@@ -399,7 +399,7 @@ function renderJacoNote() {
     <div class="note-section">
       <div class="note-header">
         <div>
-          <div class="note-kicker">Jaco Note</div>
+          <div class="note-kicker">Heart Note</div>
           <div class="note-heading">给 Connie 的留言</div>
         </div>
         <span class="note-pill">爱心备注</span>
@@ -436,7 +436,7 @@ function renderConnieNote() {
     <div class="note-section">
       <div class="note-header">
         <div>
-          <div class="note-kicker">Jaco Note</div>
+          <div class="note-kicker">Heart Note</div>
           <div class="note-heading">Jaco 对你说</div>
         </div>
         <span class="note-pill">爱心备注</span>
@@ -560,8 +560,10 @@ function renderPendingReviewItem(item) {
 
 function renderReviewButtons(date, key) {
   return `
-    <button class="btn green" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','approved')">通过</button>
-    <button class="btn red" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','rejected')">不通过</button>
+    <div class="review-actions">
+      <button class="btn green" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','approved')">通过</button>
+      <button class="btn red" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','rejected')">不通过</button>
+    </div>
   `;
 }
 
@@ -628,16 +630,29 @@ function renderTaskCard(key, date, dayIndex, isToday) {
 
   return `
     <div class="task ${status} ${available ? '' : 'lock'}">
-      <div class="emoji">${meta.emoji}</div>
-      <div class="pts">+${PTS[key]} 分</div>
-      <h3>${escapeHTML(meta.title)}</h3>
-      <p>${escapeHTML(meta.sub)}</p>
-      <div class="freq">${escapeHTML(meta.freq)}</div>
-      ${proofImages}
-      <div class="status">${taskStatusText(status)}</div>
-      ${taskActions(key, date, dayIndex, status, available, isToday)}
+      <div class="task-main">
+        <div class="task-headline">
+          <div class="emoji">${meta.emoji}</div>
+          <div class="pts">+${PTS[key]} 分</div>
+        </div>
+        <h3>${escapeHTML(meta.title)}</h3>
+        <p>${escapeHTML(meta.sub)}</p>
+        <div class="freq">${escapeHTML(meta.freq)}</div>
+      </div>
+      ${proofImages ? `<div class="task-proof-area">${proofImages}</div>` : ''}
+      <div class="task-footer">
+        <div class="status ${taskStatusClass(status)}">${taskStatusText(status)}</div>
+        <div class="task-actions">${taskActions(key, date, dayIndex, status, available, isToday)}</div>
+      </div>
     </div>
   `;
+}
+
+function taskStatusClass(status) {
+  if (status === 'pending') return 'status-pending';
+  if (status === 'approved') return 'status-approved';
+  if (status === 'rejected') return 'status-rejected';
+  return 'status-idle';
 }
 
 function taskStatusText(status) {
@@ -648,7 +663,7 @@ function taskStatusText(status) {
 }
 
 function taskActions(key, date, dayIndex, status, available, isToday) {
-  if (!available) return '<div class="status">今日无听力</div>';
+  if (!available) return '<div class="task-action-note">今日无听力</div>';
 
   if (isJaco()) {
     const dateKey = ymd(date);
@@ -661,11 +676,11 @@ function taskActions(key, date, dayIndex, status, available, isToday) {
       return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
     }
 
-    return '<div class="status">等待 Connie 提交</div>';
+    return '<div class="task-action-note">等待 Connie 提交</div>';
   }
 
-  if (!isToday) return '<div class="status">仅限当天提交</div>';
-  if (status === 'approved') return '<div class="status green-text">✓ 已通过，积分已入账</div>';
+  if (!isToday) return '<div class="task-action-note">仅限当天提交</div>';
+  if (status === 'approved') return '<div class="task-action-note action-success">积分已入账</div>';
 
   const label = status === 'pending'
     ? (allowsMultipleProofs(key) ? '更换证明图片' : '更换证明')
@@ -700,7 +715,7 @@ function renderStats() {
     <div class="stat">
       <div>
         <b>${escapeHTML(item.name)}</b>
-        <div class="sub">目标 ${item.target}/${item.target}</div>
+        <div class="sub">完成 ${item.done}/${item.target}</div>
       </div>
       <div class="stat-progress">
         <div class="bar"><div class="fill" style="width:${item.target ? item.done / item.target * 100 : 0}%"></div></div>
