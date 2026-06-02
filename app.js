@@ -11,11 +11,22 @@ const TASK_KEYS = Object.freeze(['words', 'reading', 'listening']);
 const MULTI_PROOF_TASKS = Object.freeze(['reading', 'listening']);
 const VALID_STATUSES = Object.freeze(['none', 'pending', 'approved', 'rejected']);
 const REVIEW_STATUSES = Object.freeze(['approved', 'rejected']);
+const CUSTOM_REVIEW_STATUSES = Object.freeze(['pending', 'approved', 'rejected']);
 const CUSTOM_TASK_PREFIX = 'custom-';
 const CUSTOM_TASK_KEY_PATTERN = /^custom-[a-z0-9-]+$/;
 const CUSTOM_TITLE_MAX = 40;
 const CUSTOM_POINTS_MIN = 1;
 const CUSTOM_POINTS_MAX = 100;
+const CUSTOM_REPEAT_RULES = Object.freeze(['once', 'weekly']);
+const WEEKDAY_OPTIONS = Object.freeze([
+  { value: 1, label: '周一' },
+  { value: 2, label: '周二' },
+  { value: 3, label: '周三' },
+  { value: 4, label: '周四' },
+  { value: 5, label: '周五' },
+  { value: 6, label: '周六' },
+  { value: 0, label: '周日' },
+]);
 const NOTE_SEPARATOR = '|||';
 const TASK_UPSERT_OPTIONS = Object.freeze({ onConflict: 'task_date,task_key' });
 const REVIEW_LIST_LIMIT = 5;
@@ -88,6 +99,81 @@ function isValidTaskKey(key) {
 function isCustomTask(itemOrKey) {
   const key = typeof itemOrKey === 'string' ? itemOrKey : itemOrKey?.task_key;
   return isCustomTaskKey(key);
+}
+
+function customReviewStatus(item) {
+  if (!isCustomTask(item)) return 'approved';
+  if (CUSTOM_REVIEW_STATUSES.includes(item?.custom_review_status)) {
+    return item.custom_review_status;
+  }
+
+  const status = normalizeStatus(item?.status);
+  if (status === 'pending' && !item?.proof_url) return 'pending';
+  if (status === 'rejected' && !item?.proof_url) return 'rejected';
+  return 'approved';
+}
+
+function isCustomTaskApproved(item) {
+  return customReviewStatus(item) === 'approved';
+}
+
+function customRepeatRule(item) {
+  const rule = String(item?.custom_repeat_rule || 'once');
+  return CUSTOM_REPEAT_RULES.includes(rule) ? rule : 'once';
+}
+
+function parseCustomWeekdays(value) {
+  if (!value) return [];
+  const text = String(value).trim();
+  if (!text) return [];
+
+  let raw = [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) raw = parsed;
+  } catch (_) {
+    raw = text.split(',');
+  }
+
+  return Array.from(new Set(raw
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)));
+}
+
+function serializeCustomWeekdays(days) {
+  return Array.from(new Set(days
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)))
+    .join(',');
+}
+
+function customWeekdays(item) {
+  const days = parseCustomWeekdays(item?.custom_weekdays);
+  if (days.length) return days;
+
+  if (customRepeatRule(item) === 'weekly' && item?.task_date) {
+    return [dateFromYmd(item.task_date).getDay()];
+  }
+
+  return [];
+}
+
+function customRepeatText(item) {
+  if (customRepeatRule(item) !== 'weekly') return '单次';
+
+  const days = customWeekdays(item);
+  if (!days.length) return '每周循环';
+
+  const labels = WEEKDAY_OPTIONS
+    .filter((option) => days.includes(option.value))
+    .map((option) => option.label);
+  return `每${labels.join('、')}`;
+}
+
+function isRecurringTemplate(item) {
+  return isCustomTask(item)
+    && customRepeatRule(item) === 'weekly'
+    && item?.custom_is_template === true;
 }
 
 function pointsFor(itemOrKey) {
@@ -193,7 +279,7 @@ function renderProofImages(item, mode = 'task') {
 }
 
 function allowsMultipleProofs(key) {
-  return MULTI_PROOF_TASKS.includes(key);
+  return MULTI_PROOF_TASKS.includes(key) || isCustomTaskKey(key);
 }
 
 function imgSrcAttr(url) {
@@ -210,7 +296,7 @@ function metaFor(key, item = null) {
       emoji: '✨',
       title: customTaskTitle(item),
       sub: 'Connie 自主申报的今日加分任务',
-      freq: '今日申报',
+      freq: customRepeatText(item),
     };
   }
 
@@ -219,6 +305,15 @@ function metaFor(key, item = null) {
 
 function ymd(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function dateFromYmd(value) {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return startOfDay(new Date());
+  }
+
+  return new Date(year, month - 1, day);
 }
 
 function startOfDay(date) {
@@ -252,32 +347,112 @@ function hear(dayIndex, off = weekOffset) {
 }
 
 function task(date, key) {
-  const row = tasks.find((item) => item.task_date === ymd(date) && item.task_key === key);
-  return row ? { ...row, status: normalizeStatus(row.status) } : { task_date: ymd(date), task_key: key, status: 'none' };
+  const dateKey = ymd(date);
+  const row = tasks.find((item) => item.task_date === dateKey && item.task_key === key);
+  if (row) return { ...row, status: normalizeStatus(row.status) };
+
+  const template = recurringTemplateForDate(date, key);
+  if (template) return materializeRecurringTask(template, date);
+
+  return { task_date: dateKey, task_key: key, status: 'none' };
 }
 
 function taskByDateKey(dateKey, key) {
   return tasks.find((item) => item.task_date === dateKey && item.task_key === key) || null;
 }
 
+function recurringTemplateMatchesDate(template, date) {
+  if (!isRecurringTemplate(template) || !isCustomTaskApproved(template)) return false;
+  if (ymd(date) < template.task_date) return false;
+  return customWeekdays(template).includes(date.getDay());
+}
+
+function recurringTemplateForDate(date, key = null) {
+  return tasks.find((item) => (
+    isRecurringTemplate(item)
+    && (!key || item.task_key === key)
+    && recurringTemplateMatchesDate(item, date)
+  )) || null;
+}
+
+function recurringTemplateForSeries(item) {
+  return tasks.find((template) => (
+    isRecurringTemplate(template)
+    && template.task_key === item.task_key
+    && template.custom_series_id === item.custom_series_id
+  )) || null;
+}
+
+function materializeRecurringTask(template, date) {
+  return {
+    ...template,
+    task_date: ymd(date),
+    status: 'none',
+    proof_url: null,
+    proof_name: null,
+    submitted_at: null,
+    reviewed_at: null,
+    reviewed_by: null,
+    custom_is_template: false,
+    _virtual: true,
+  };
+}
+
+function customTaskSource(row) {
+  return taskByDateKey(row.task_date, row.task_key)
+    || recurringTemplateForDate(dateFromYmd(row.task_date), row.task_key);
+}
+
 function keepCustomTaskFields(row) {
   if (!isCustomTaskKey(row.task_key)) return row;
 
-  const existing = taskByDateKey(row.task_date, row.task_key);
+  const existing = customTaskSource(row);
   if (!existing) return row;
 
-  row.custom_title = existing.custom_title;
-  row.custom_points = existing.custom_points;
-  row.custom_created_by = existing.custom_created_by;
+  if (row.custom_title === undefined) row.custom_title = existing.custom_title;
+  if (row.custom_points === undefined) row.custom_points = existing.custom_points;
+  if (row.custom_created_by === undefined) row.custom_created_by = existing.custom_created_by;
+  if (row.custom_review_status === undefined) row.custom_review_status = customReviewStatus(existing);
+  if (row.custom_requested_at === undefined) row.custom_requested_at = existing.custom_requested_at;
+  if (row.custom_reviewed_at === undefined) row.custom_reviewed_at = existing.custom_reviewed_at;
+  if (row.custom_reviewed_by === undefined) row.custom_reviewed_by = existing.custom_reviewed_by;
+  if (row.custom_repeat_rule === undefined) row.custom_repeat_rule = existing.custom_repeat_rule;
+  if (row.custom_weekdays === undefined) row.custom_weekdays = existing.custom_weekdays;
+  if (row.custom_series_id === undefined) row.custom_series_id = existing.custom_series_id;
+  if (row.custom_is_template === undefined) row.custom_is_template = Boolean(existing.custom_is_template) && row.task_date === existing.task_date;
   return row;
+}
+
+function customTaskIsVisibleOnDate(item, date) {
+  const reviewStatus = customReviewStatus(item);
+  if (reviewStatus === 'rejected') return false;
+
+  const dateKey = ymd(date);
+  if (reviewStatus === 'pending') {
+    return !isJaco() && item.task_date === dateKey;
+  }
+
+  if (customRepeatRule(item) !== 'weekly') {
+    return item.task_date === dateKey;
+  }
+
+  const template = isRecurringTemplate(item) ? item : recurringTemplateForSeries(item);
+  if (template) return recurringTemplateMatchesDate(template, date);
+
+  return dateKey >= item.task_date && customWeekdays(item).includes(date.getDay());
 }
 
 function customTasksForDate(date) {
   const dateKey = ymd(date);
-  return tasks
-    .filter((item) => item.task_date === dateKey && isCustomTask(item))
-    .slice()
-    .sort((a, b) => String(a.submitted_at || '').localeCompare(String(b.submitted_at || '')));
+  const realRows = tasks
+    .filter((item) => item.task_date === dateKey && isCustomTask(item) && customTaskIsVisibleOnDate(item, date));
+  const realKeys = new Set(realRows.map((item) => item.task_key));
+  const virtualRows = tasks
+    .filter((item) => isRecurringTemplate(item) && recurringTemplateMatchesDate(item, date) && !realKeys.has(item.task_key))
+    .map((item) => materializeRecurringTask(item, date));
+
+  return [...realRows, ...virtualRows]
+    .sort((a, b) => String(a.custom_requested_at || a.submitted_at || '').localeCompare(String(b.custom_requested_at || b.submitted_at || '')));
 }
 
 function hasLateSubmitUnlockColumns(item) {
@@ -381,21 +556,36 @@ async function init() {
   subscribe();
 }
 
+function mergeTaskRows(primaryRows, extraRows) {
+  const rows = [];
+  const seen = new Set();
+
+  [...primaryRows, ...extraRows].forEach((row) => {
+    const key = `${row.task_date}|${row.task_key}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  });
+
+  return rows;
+}
+
 async function loadAll() {
   const from = ymd(dayDate(0, Math.min(-12, weekOffset)));
   const to = ymd(dayDate(6, Math.max(4, weekOffset)));
-  const [taskRes, noteRes, adjRes] = await Promise.all([
+  const [taskRes, recurringRes, noteRes, adjRes] = await Promise.all([
     db.from('tasks').select('*').gte('task_date', from).lte('task_date', to).order('submitted_at', { ascending: false }),
+    db.from('tasks').select('*').eq('custom_repeat_rule', 'weekly').eq('custom_is_template', true).lte('task_date', to).order('custom_requested_at', { ascending: false }),
     db.from('notes').select('*').eq('id', 1).maybeSingle(),
     db.from('score_adjustments').select('*').order('created_at', { ascending: false }),
   ]);
 
-  const firstError = taskRes.error || noteRes.error || adjRes.error;
+  const firstError = taskRes.error || recurringRes.error || noteRes.error || adjRes.error;
   if (firstError) {
     toast('同步失败：' + firstError.message);
   }
 
-  tasks = taskRes.data || [];
+  tasks = mergeTaskRows(taskRes.data || [], recurringRes.data || []);
   markLateSubmitUnlockColumns(tasks);
   adjustments = adjRes.data || [];
 
@@ -452,7 +642,7 @@ function isFull(dayIndex, off = weekOffset) {
 function renderHero() {
   let points = 0;
   tasks.forEach((item) => {
-    if (normalizeStatus(item.status) === 'approved') {
+    if (normalizeStatus(item.status) === 'approved' && (!isCustomTask(item) || isCustomTaskApproved(item))) {
       points += pointsFor(item);
     }
   });
@@ -633,7 +823,9 @@ function renderReview() {
 
   panel.classList.remove('hidden');
 
-  const pending = tasks.filter((item) => normalizeStatus(item.status) === 'pending');
+  const pending = tasks
+    .filter(needsJacoReview)
+    .sort((a, b) => String(reviewSortTime(b)).localeCompare(String(reviewSortTime(a))));
   const visiblePending = pending.slice(0, REVIEW_LIST_LIMIT);
   const countText = pending.length > visiblePending.length
     ? `${visiblePending.length}/${pending.length} 条`
@@ -645,10 +837,26 @@ function renderReview() {
     : '<div class="empty-state">暂无记录 ✓</div>';
 }
 
+function needsJacoReview(item) {
+  if (!isCustomTask(item)) return normalizeStatus(item.status) === 'pending';
+  return customReviewStatus(item) === 'pending'
+    || (isCustomTaskApproved(item) && normalizeStatus(item.status) === 'pending');
+}
+
+function reviewSortTime(item) {
+  if (isCustomTask(item) && customReviewStatus(item) === 'pending') {
+    return item.custom_requested_at || item.submitted_at || '';
+  }
+
+  return item.submitted_at || item.custom_requested_at || '';
+}
+
 function renderPendingReviewItem(item) {
   const meta = metaFor(item.task_key, item);
-  const details = isCustomTask(item)
-    ? `${item.task_date} · 自定义加分 · +${pointsFor(item)} 分`
+  const custom = isCustomTask(item);
+  const reviewingCustomTask = custom && customReviewStatus(item) === 'pending';
+  const details = custom
+    ? `${item.task_date} · ${reviewingCustomTask ? '任务申请' : '完成证明'} · ${customRepeatText(item)} · +${pointsFor(item)} 分${reviewingCustomTask ? '' : ` · ${proofSummary(item)}`}`
     : `${item.task_date} · ${proofSummary(item)}`;
 
   return `
@@ -658,7 +866,16 @@ function renderPendingReviewItem(item) {
         <b>${meta.emoji} ${escapeHTML(meta.title)}</b>
         <div class="sub">${escapeHTML(details)}</div>
       </div>
-      ${renderReviewButtons(item.task_date, item.task_key)}
+      ${reviewingCustomTask ? renderCustomTaskReviewButtons(item.task_date, item.task_key) : renderReviewButtons(item.task_date, item.task_key)}
+    </div>
+  `;
+}
+
+function renderCustomTaskReviewButtons(date, key) {
+  return `
+    <div class="review-actions">
+      <button class="btn green" onclick="reviewCustomTask('${jsArgAttr(date)}','${jsArgAttr(key)}','approved')">批准任务</button>
+      <button class="btn red" onclick="reviewCustomTask('${jsArgAttr(date)}','${jsArgAttr(key)}','rejected')">拒绝任务</button>
     </div>
   `;
 }
@@ -740,12 +957,13 @@ function renderTaskCard(key, date, dayIndex, isToday, item = null) {
   const meta = metaFor(key, currentTask);
   const available = custom || key !== 'listening' || hear(dayIndex);
   const status = normalizeStatus(currentTask.status);
+  const cardStatus = custom && !isCustomTaskApproved(currentTask) ? customReviewStatus(currentTask) : status;
   const lateUnlocked = isLateSubmitUnlocked(currentTask);
   const proofImages = renderProofImages(currentTask);
   const pointValue = pointsFor(currentTask);
 
   return `
-    <div class="task ${status} ${lateUnlocked ? 'unlocked' : ''} ${available ? '' : 'lock'} ${custom ? 'custom-task-card' : ''}">
+    <div class="task ${cardStatus} ${lateUnlocked ? 'unlocked' : ''} ${available ? '' : 'lock'} ${custom ? 'custom-task-card' : ''}">
       <div class="task-main">
         <div class="task-headline">
           <div class="emoji">${meta.emoji}</div>
@@ -773,14 +991,32 @@ function renderCustomTaskForm(dayIndex) {
           <div class="pts">自定分值</div>
         </div>
         <h3>申报今日加分任务</h3>
-        <p>写下今天额外完成的学习任务，设置分值后提交给 Jaco 审核。</p>
+        <p>写下今天想新增的学习任务和分值，Jaco 批准后再上传完成证明。</p>
         <div class="custom-fields">
           <input id="custom-task-title" class="input" maxlength="${CUSTOM_TITLE_MAX}" placeholder="任务名称，如：完成一套四级翻译">
           <input id="custom-task-points" class="input" type="number" min="${CUSTOM_POINTS_MIN}" max="${CUSTOM_POINTS_MAX}" placeholder="加几分">
+          <div class="repeat-mode" role="radiogroup" aria-label="任务重复方式">
+            <label class="repeat-option">
+              <input type="radio" name="custom-repeat-rule" value="once" checked onchange="toggleCustomRepeatDays()">
+              <span>单次</span>
+            </label>
+            <label class="repeat-option">
+              <input type="radio" name="custom-repeat-rule" value="weekly" onchange="toggleCustomRepeatDays()">
+              <span>每周循环</span>
+            </label>
+          </div>
+          <div id="custom-repeat-days" class="weekday-picker hidden">
+            ${WEEKDAY_OPTIONS.map((option) => `
+              <label class="weekday-option">
+                <input type="checkbox" value="${option.value}">
+                <span>${option.label}</span>
+              </label>
+            `).join('')}
+          </div>
         </div>
       </div>
       <div class="task-footer">
-        <div class="status status-idle">审核通过后入账</div>
+        <div class="status status-idle">先审核任务</div>
         <div class="task-actions">
           <button class="btn gold" onclick="submitCustomTask(${dayIndex})">申报给 Jaco</button>
         </div>
@@ -790,6 +1026,10 @@ function renderCustomTaskForm(dayIndex) {
 }
 
 function taskStatusClass(status, item) {
+  if (isCustomTask(item) && !isCustomTaskApproved(item)) {
+    return customReviewStatus(item) === 'pending' ? 'status-pending' : 'status-rejected';
+  }
+
   if (isLateSubmitUnlocked(item)) return 'status-unlocked';
   if (status === 'pending') return 'status-pending';
   if (status === 'approved') return 'status-approved';
@@ -799,10 +1039,13 @@ function taskStatusClass(status, item) {
 
 function taskStatusText(status, item) {
   if (isCustomTask(item)) {
-    if (status === 'pending') return '等待 Jaco 审核加分';
+    const reviewStatus = customReviewStatus(item);
+    if (reviewStatus === 'pending') return '等待 Jaco 批准任务';
+    if (reviewStatus === 'rejected') return '任务申请未通过';
+    if (status === 'pending') return '完成证明等待 Jaco 审核';
     if (status === 'approved') return 'Jaco 已通过，积分已入账';
-    if (status === 'rejected') return 'Jaco 未通过';
-    return '尚未申报';
+    if (status === 'rejected') return '完成证明未通过，请重新提交';
+    return '任务已批准，等待上传证明';
   }
 
   if (isLateSubmitUnlocked(item)) return 'Jaco 已开放补交';
@@ -828,7 +1071,7 @@ function taskActions(key, date, dayIndex, status, available, isToday, currentTas
   if (!available) return '<div class="task-action-note">今日无听力</div>';
 
   if (isCustomTask(currentTask)) {
-    return customTaskActions(key, date, status);
+    return customTaskActions(key, date, dayIndex, status, currentTask);
   }
 
   if (isJaco()) {
@@ -861,10 +1104,19 @@ function taskActions(key, date, dayIndex, status, available, isToday, currentTas
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${label}</button>`;
 }
 
-function customTaskActions(key, date, status) {
+function customTaskActions(key, date, dayIndex, status, currentTask) {
   const dateKey = ymd(date);
+  const reviewStatus = customReviewStatus(currentTask);
 
   if (isJaco()) {
+    if (reviewStatus === 'pending') {
+      return renderCustomTaskReviewButtons(dateKey, key);
+    }
+
+    if (reviewStatus === 'rejected') {
+      return '<div class="task-action-note">任务申请已退回</div>';
+    }
+
     if (status === 'pending') {
       return renderReviewButtons(dateKey, key);
     }
@@ -873,17 +1125,15 @@ function customTaskActions(key, date, status) {
       return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
     }
 
-    if (status === 'rejected') {
-      return '<div class="task-action-note">已退回 Connie</div>';
-    }
-
-    return '<div class="task-action-note">等待 Connie 申报</div>';
+    return '<div class="task-action-note">等待 Connie 上传证明</div>';
   }
 
-  if (status === 'pending') return '<div class="task-action-note">已申报，等待 Jaco 审核</div>';
+  if (reviewStatus === 'pending') return '<div class="task-action-note">已申报，等待 Jaco 批准任务</div>';
+  if (reviewStatus === 'rejected') return '<div class="task-action-note">任务申请未通过，可重新申报</div>';
   if (status === 'approved') return '<div class="task-action-note action-success">自定义积分已入账</div>';
-  if (status === 'rejected') return '<div class="task-action-note">未通过，可重新申报</div>';
-  return '<div class="task-action-note">尚未申报</div>';
+  if (status === 'pending') return '<div class="task-action-note">完成证明等待 Jaco 审核</div>';
+  if (!canConnieSubmitTask(date, currentTask)) return '<div class="task-action-note">仅限当天上传证明</div>';
+  return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${status === 'rejected' ? '重新上传完成证明' : '上传完成证明图片'}</button>`;
 }
 
 function renderStats() {
@@ -914,6 +1164,7 @@ function renderStats() {
   tasks.forEach((item) => {
     if (
       isCustomTask(item)
+      && isCustomTaskApproved(item)
       && normalizeStatus(item.status) === 'approved'
       && item.task_date >= weekFrom
       && item.task_date <= weekTo
@@ -1002,6 +1253,23 @@ async function goToday() {
   await loadAll();
 }
 
+function selectedCustomRepeatRule() {
+  return document.querySelector('input[name="custom-repeat-rule"]:checked')?.value || 'once';
+}
+
+function selectedCustomWeekdays() {
+  return Array.from(document.querySelectorAll('#custom-repeat-days input[type="checkbox"]:checked'))
+    .map((input) => Number(input.value))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+}
+
+function toggleCustomRepeatDays() {
+  const picker = document.getElementById('custom-repeat-days');
+  if (!picker) return;
+
+  picker.classList.toggle('hidden', selectedCustomRepeatRule() !== 'weekly');
+}
+
 async function submitCustomTask(dayIndex) {
   if (!requireConnie()) return;
 
@@ -1016,6 +1284,8 @@ async function submitCustomTask(dayIndex) {
   const pointsInput = document.getElementById('custom-task-points');
   const title = titleInput.value.trim();
   const points = parseInt(pointsInput.value, 10);
+  const repeatRule = selectedCustomRepeatRule();
+  const weekdays = repeatRule === 'weekly' ? selectedCustomWeekdays() : [];
 
   if (!title || title.length > CUSTOM_TITLE_MAX) {
     toast(`请输入 1-${CUSTOM_TITLE_MAX} 个字的任务名称`);
@@ -1027,16 +1297,31 @@ async function submitCustomTask(dayIndex) {
     return;
   }
 
+  if (repeatRule === 'weekly' && !weekdays.length) {
+    toast('请选择每周循环的星期');
+    return;
+  }
+
+  const taskKey = createCustomTaskKey();
+  const now = new Date().toISOString();
   const row = clearLateSubmitUnlock({
     task_date: dateKey,
-    task_key: createCustomTaskKey(),
-    status: 'pending',
+    task_key: taskKey,
+    status: 'none',
     custom_title: title,
     custom_points: points,
     custom_created_by: session.user.id,
+    custom_review_status: 'pending',
+    custom_requested_at: now,
+    custom_reviewed_at: null,
+    custom_reviewed_by: null,
+    custom_repeat_rule: repeatRule,
+    custom_weekdays: repeatRule === 'weekly' ? serializeCustomWeekdays(weekdays) : null,
+    custom_series_id: taskKey,
+    custom_is_template: repeatRule === 'weekly',
     proof_url: null,
     proof_name: null,
-    submitted_at: new Date().toISOString(),
+    submitted_at: null,
     reviewed_at: null,
     reviewed_by: null,
   });
@@ -1050,22 +1335,38 @@ async function submitCustomTask(dayIndex) {
     return;
   }
 
-  toast('已申报给 Jaco，等待审核');
+  toast('已申报给 Jaco，等待批准任务');
   titleInput.value = '';
   pointsInput.value = '';
+  document.querySelector('input[name="custom-repeat-rule"][value="once"]').checked = true;
+  document.querySelectorAll('#custom-repeat-days input[type="checkbox"]').forEach((input) => {
+    input.checked = false;
+  });
+  toggleCustomRepeatDays();
   await loadAll();
 }
 
 function upload(key, dayIndex) {
   if (!requireConnie()) return;
-  if (!TASK_KEYS.includes(key)) {
+  if (!isValidTaskKey(key)) {
     toast('未知任务类型');
     return;
   }
 
   const date = dayDate(dayIndex);
   const currentTask = task(date, key);
-  if (!canConnieSubmitTask(date, currentTask)) {
+  const custom = isCustomTask(currentTask);
+  if (custom && !isCustomTaskApproved(currentTask)) {
+    toast('Jaco 批准这个任务后才能上传证明');
+    return;
+  }
+
+  if (custom && !canConnieSubmitTask(date, currentTask)) {
+    toast('只能在任务当天上传证明');
+    return;
+  }
+
+  if (!custom && !canConnieSubmitTask(date, currentTask)) {
     toast('这个任务还没有开放补交');
     return;
   }
@@ -1121,7 +1422,7 @@ function compress(file) {
 async function handleFile(event) {
   if (!pendingUpload) return;
   const { key, dayIndex } = pendingUpload;
-  if (!TASK_KEYS.includes(key)) {
+  if (!isValidTaskKey(key)) {
     toast('未知任务类型');
     pendingUpload = null;
     return;
@@ -1145,6 +1446,19 @@ async function handleFile(event) {
 
   const date = dayDate(dayIndex);
   const dateKey = ymd(date);
+  const currentTask = task(date, key);
+  if (isCustomTask(currentTask) && !isCustomTaskApproved(currentTask)) {
+    toast('Jaco 批准这个任务后才能上传证明');
+    pendingUpload = null;
+    return;
+  }
+
+  if (isCustomTask(currentTask) && !canConnieSubmitTask(date, currentTask)) {
+    toast('只能在任务当天上传证明');
+    pendingUpload = null;
+    return;
+  }
+
   toast(files.length > 1 ? `正在上传 ${files.length} 张图片…` : '正在上传图片…');
 
   try {
@@ -1166,7 +1480,7 @@ async function handleFile(event) {
       names.push(file.name);
     }
 
-    const row = clearLateSubmitUnlock({
+    const row = keepCustomTaskFields(clearLateSubmitUnlock({
       task_date: dateKey,
       task_key: key,
       status: 'pending',
@@ -1175,7 +1489,7 @@ async function handleFile(event) {
       submitted_at: new Date().toISOString(),
       reviewed_at: null,
       reviewed_by: null,
-    });
+    }));
     const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
     if (error) throw error;
@@ -1229,10 +1543,53 @@ async function unlockLateSubmit(date, key) {
   await loadAll();
 }
 
+async function reviewCustomTask(date, key, status) {
+  if (!requireJaco()) return;
+  if (!isCustomTaskKey(key) || !REVIEW_STATUSES.includes(status)) {
+    toast('任务申请审核参数无效');
+    return;
+  }
+
+  const existing = taskByDateKey(date, key);
+  if (!existing || !isCustomTask(existing)) {
+    toast('没有找到这个自定义任务申请');
+    return;
+  }
+
+  const row = keepCustomTaskFields(clearLateSubmitUnlock({
+    task_date: date,
+    task_key: key,
+    status: 'none',
+    custom_review_status: status,
+    custom_reviewed_at: new Date().toISOString(),
+    custom_reviewed_by: session.user.id,
+    proof_url: null,
+    proof_name: null,
+    submitted_at: null,
+    reviewed_at: null,
+    reviewed_by: null,
+  }));
+
+  const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
+  if (error) {
+    toast('任务申请审核失败：' + error.message);
+    return;
+  }
+
+  toast(status === 'approved' ? '已批准任务，等待 Connie 上传证明' : '已拒绝这个任务申请');
+  await loadAll();
+}
+
 async function review(date, key, status) {
   if (!requireJaco()) return;
   if (!isValidTaskKey(key) || !REVIEW_STATUSES.includes(status)) {
     toast('审核参数无效');
+    return;
+  }
+
+  const existing = taskByDateKey(date, key);
+  if (isCustomTaskKey(key) && (!existing || !isCustomTaskApproved(existing))) {
+    toast('请先批准这个自定义任务，再审核完成证明');
     return;
   }
 
@@ -1363,10 +1720,12 @@ Object.assign(window, {
   changeLogPage,
   changeWeek,
   goToday,
+  toggleCustomRepeatDays,
   submitCustomTask,
   upload,
   handleFile,
   unlockLateSubmit,
+  reviewCustomTask,
   review,
   revoke,
   adjustScore,

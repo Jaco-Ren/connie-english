@@ -65,12 +65,41 @@ as $$
   select public.current_profile_role() = 'connie'
 $$;
 
+create or replace function public.has_approved_custom_task_template(
+  series_id text,
+  requested_task_key text,
+  owner_id uuid,
+  target_date date
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.tasks template
+    where template.custom_series_id = series_id
+      and template.task_key = requested_task_key
+      and template.custom_created_by = owner_id
+      and template.custom_review_status = 'approved'
+      and template.custom_repeat_rule = 'weekly'
+      and coalesce(template.custom_is_template, false) = true
+      and template.task_date <= target_date
+      and (',' || coalesce(template.custom_weekdays, '') || ',') like ('%,' || extract(dow from target_date)::int || ',%')
+    limit 1
+  )
+$$;
+
 revoke all on function public.current_profile_role() from public;
 revoke all on function public.is_jaco() from public;
 revoke all on function public.is_connie() from public;
+revoke all on function public.has_approved_custom_task_template(text, text, uuid, date) from public;
 grant execute on function public.current_profile_role() to authenticated;
 grant execute on function public.is_jaco() to authenticated;
 grant execute on function public.is_connie() to authenticated;
+grant execute on function public.has_approved_custom_task_template(text, text, uuid, date) to authenticated;
 
 -- Baseline grants. RLS still decides which rows/actions are allowed.
 grant usage on schema public to authenticated;
@@ -86,7 +115,22 @@ add column if not exists late_submit_unlocked_at timestamptz,
 add column if not exists late_submit_unlocked_by uuid,
 add column if not exists custom_title text,
 add column if not exists custom_points integer,
-add column if not exists custom_created_by uuid;
+add column if not exists custom_created_by uuid,
+add column if not exists custom_review_status text,
+add column if not exists custom_requested_at timestamptz,
+add column if not exists custom_reviewed_at timestamptz,
+add column if not exists custom_reviewed_by uuid,
+add column if not exists custom_repeat_rule text,
+add column if not exists custom_weekdays text,
+add column if not exists custom_series_id text,
+add column if not exists custom_is_template boolean;
+
+alter table public.tasks
+drop constraint if exists tasks_status_check;
+
+alter table public.tasks
+add constraint tasks_status_check
+check (status in ('none', 'pending', 'approved', 'rejected'));
 
 alter table public.tasks
 drop constraint if exists tasks_task_key_check;
@@ -109,12 +153,43 @@ check (
     and custom_title is null
     and custom_points is null
     and custom_created_by is null
+    and custom_review_status is null
+    and custom_requested_at is null
+    and custom_reviewed_at is null
+    and custom_reviewed_by is null
+    and custom_repeat_rule is null
+    and custom_weekdays is null
+    and custom_series_id is null
+    and custom_is_template is null
   )
   or (
     task_key ~ '^custom-[a-z0-9-]+$'
     and length(btrim(coalesce(custom_title, ''))) between 1 and 40
     and custom_points between 1 and 100
     and custom_created_by is not null
+    and custom_review_status in ('pending', 'approved', 'rejected')
+    and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+    and (
+      (
+        coalesce(custom_repeat_rule, 'once') = 'once'
+        and custom_weekdays is null
+      )
+      or (
+        custom_repeat_rule = 'weekly'
+        and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+        and custom_series_id is not null
+      )
+    )
+    and (
+      (
+        custom_review_status in ('pending', 'rejected')
+        and status = 'none'
+      )
+      or (
+        custom_review_status = 'approved'
+        and status in ('none', 'pending', 'approved', 'rejected')
+      )
+    )
   )
 );
 
@@ -148,23 +223,73 @@ for insert
 to authenticated
 with check (
   public.is_connie()
-  and status = 'pending'
-  and reviewed_at is null
-  and reviewed_by is null
   and (
     (
       task_key in ('words', 'reading', 'listening')
+      and status = 'pending'
       and custom_title is null
       and custom_points is null
       and custom_created_by is null
+      and custom_review_status is null
+      and custom_requested_at is null
+      and custom_reviewed_at is null
+      and custom_reviewed_by is null
+      and custom_repeat_rule is null
+      and custom_weekdays is null
+      and custom_series_id is null
+      and custom_is_template is null
+      and reviewed_at is null
+      and reviewed_by is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
+      and status = 'none'
       and length(btrim(coalesce(custom_title, ''))) between 1 and 40
       and custom_points between 1 and 100
       and custom_created_by = auth.uid()
+      and custom_review_status = 'pending'
+      and custom_requested_at is not null
+      and custom_reviewed_at is null
+      and custom_reviewed_by is null
+      and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+      and (
+        (
+          coalesce(custom_repeat_rule, 'once') = 'once'
+          and custom_weekdays is null
+          and coalesce(custom_is_template, false) = false
+        )
+        or (
+          custom_repeat_rule = 'weekly'
+          and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+          and custom_series_id is not null
+          and custom_is_template is true
+        )
+      )
       and proof_url is null
       and proof_name is null
+      and submitted_at is null
+      and reviewed_at is null
+      and reviewed_by is null
+    )
+    or (
+      task_key ~ '^custom-[a-z0-9-]+$'
+      and status = 'pending'
+      and length(btrim(coalesce(custom_title, ''))) between 1 and 40
+      and custom_points between 1 and 100
+      and custom_created_by = auth.uid()
+      and custom_review_status = 'approved'
+      and custom_requested_at is not null
+      and custom_reviewed_at is not null
+      and custom_reviewed_by is not null
+      and custom_repeat_rule = 'weekly'
+      and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+      and custom_series_id is not null
+      and coalesce(custom_is_template, false) = false
+      and proof_url is not null
+      and submitted_at is not null
+      and reviewed_at is null
+      and reviewed_by is null
+      and public.has_approved_custom_task_template(custom_series_id, task_key, auth.uid(), task_date)
     )
   )
 );
@@ -176,34 +301,65 @@ for update
 to authenticated
 using (
   public.is_connie()
-  and status in ('pending', 'rejected')
   and (
-    task_key in ('words', 'reading', 'listening')
+    (
+      task_key in ('words', 'reading', 'listening')
+      and status in ('pending', 'rejected')
+    )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
       and custom_created_by = auth.uid()
+      and custom_review_status = 'approved'
+      and status in ('none', 'pending', 'rejected')
     )
   )
 )
 with check (
   public.is_connie()
-  and status = 'pending'
-  and reviewed_at is null
-  and reviewed_by is null
   and (
     (
       task_key in ('words', 'reading', 'listening')
+      and status = 'pending'
       and custom_title is null
       and custom_points is null
       and custom_created_by is null
+      and custom_review_status is null
+      and custom_requested_at is null
+      and custom_reviewed_at is null
+      and custom_reviewed_by is null
+      and custom_repeat_rule is null
+      and custom_weekdays is null
+      and custom_series_id is null
+      and custom_is_template is null
+      and reviewed_at is null
+      and reviewed_by is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
+      and status = 'pending'
       and length(btrim(coalesce(custom_title, ''))) between 1 and 40
       and custom_points between 1 and 100
       and custom_created_by = auth.uid()
-      and proof_url is null
-      and proof_name is null
+      and custom_review_status = 'approved'
+      and custom_requested_at is not null
+      and custom_reviewed_at is not null
+      and custom_reviewed_by is not null
+      and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+      and (
+        (
+          coalesce(custom_repeat_rule, 'once') = 'once'
+          and custom_weekdays is null
+        )
+        or (
+          custom_repeat_rule = 'weekly'
+          and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+          and custom_series_id is not null
+        )
+      )
+      and proof_url is not null
+      and submitted_at is not null
+      and reviewed_at is null
+      and reviewed_by is null
     )
   )
 );
@@ -218,19 +374,42 @@ for insert
 to authenticated
 with check (
   public.is_jaco()
-  and status in ('pending', 'approved', 'rejected')
   and (
     (
       task_key in ('words', 'reading', 'listening')
+      and status in ('pending', 'approved', 'rejected')
       and custom_title is null
       and custom_points is null
       and custom_created_by is null
+      and custom_review_status is null
+      and custom_requested_at is null
+      and custom_reviewed_at is null
+      and custom_reviewed_by is null
+      and custom_repeat_rule is null
+      and custom_weekdays is null
+      and custom_series_id is null
+      and custom_is_template is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
+      and status in ('none', 'pending', 'approved', 'rejected')
       and length(btrim(coalesce(custom_title, ''))) between 1 and 40
       and custom_points between 1 and 100
       and custom_created_by is not null
+      and custom_review_status in ('pending', 'approved', 'rejected')
+      and custom_requested_at is not null
+      and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+      and (
+        (
+          coalesce(custom_repeat_rule, 'once') = 'once'
+          and custom_weekdays is null
+        )
+        or (
+          custom_repeat_rule = 'weekly'
+          and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+          and custom_series_id is not null
+        )
+      )
     )
   )
 );
@@ -243,19 +422,42 @@ to authenticated
 using (public.is_jaco())
 with check (
   public.is_jaco()
-  and status in ('pending', 'approved', 'rejected')
   and (
     (
       task_key in ('words', 'reading', 'listening')
+      and status in ('pending', 'approved', 'rejected')
       and custom_title is null
       and custom_points is null
       and custom_created_by is null
+      and custom_review_status is null
+      and custom_requested_at is null
+      and custom_reviewed_at is null
+      and custom_reviewed_by is null
+      and custom_repeat_rule is null
+      and custom_weekdays is null
+      and custom_series_id is null
+      and custom_is_template is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
+      and status in ('none', 'pending', 'approved', 'rejected')
       and length(btrim(coalesce(custom_title, ''))) between 1 and 40
       and custom_points between 1 and 100
       and custom_created_by is not null
+      and custom_review_status in ('pending', 'approved', 'rejected')
+      and custom_requested_at is not null
+      and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+      and (
+        (
+          coalesce(custom_repeat_rule, 'once') = 'once'
+          and custom_weekdays is null
+        )
+        or (
+          custom_repeat_rule = 'weekly'
+          and custom_weekdays ~ '^[0-6](,[0-6]){0,6}$'
+          and custom_series_id is not null
+        )
+      )
     )
   )
 );

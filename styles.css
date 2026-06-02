@@ -692,6 +692,33 @@ body {
   margin-top: 0;
 }
 
+.repeat-mode,
+.weekday-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.repeat-option,
+.weekday-option {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: 700 12px/1.25 Inter, sans-serif;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.repeat-option input,
+.weekday-option input {
+  accent-color: var(--teal);
+}
+
 .task.lock {
   opacity: .58;
 }
