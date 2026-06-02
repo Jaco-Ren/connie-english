@@ -44,6 +44,8 @@ check (role in ('connie', 'jaco'));
 | `submitted_at` | `timestamptz` | Set by frontend |
 | `reviewed_at` | `timestamptz` | Set when Jaco reviews |
 | `reviewed_by` | `uuid` | Jaco user id |
+| `late_submit_unlocked_at` | `timestamptz` | Set when Jaco opens a past task for Connie to submit |
+| `late_submit_unlocked_by` | `uuid` | Jaco user id that opened the late submission |
 
 Recommended constraints:
 
@@ -59,6 +61,14 @@ check (status in ('pending', 'approved', 'rejected'));
 alter table public.tasks
 add constraint tasks_task_date_task_key_key
 unique (task_date, task_key);
+```
+
+Late submission unlock columns can be added to an existing project with:
+
+```sql
+alter table public.tasks
+add column if not exists late_submit_unlocked_at timestamptz,
+add column if not exists late_submit_unlocked_by uuid;
 ```
 
 ### `public.notes`
@@ -109,7 +119,7 @@ After applying [supabase/rls.sql](../supabase/rls.sql):
 - Each user can read only their own row in `profiles`.
 - Connie can create or replace pending task submissions.
 - Connie cannot modify approved task rows from the browser client.
-- Jaco can approve, reject, or revoke approval on task rows.
+- Jaco can approve, reject, revoke approval, or open a past task for late submission.
 - Both known roles can read and update the shared `notes` row.
 - Only Jaco can create or delete score adjustments.
 - Connie can upload proof images to the `proofs` bucket.

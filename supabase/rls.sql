@@ -81,6 +81,10 @@ grant select, insert, update on public.notes to authenticated;
 grant select, insert, delete on public.score_adjustments to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
+alter table public.tasks
+add column if not exists late_submit_unlocked_at timestamptz,
+add column if not exists late_submit_unlocked_by uuid;
+
 alter table public.profiles enable row level security;
 alter table public.tasks enable row level security;
 alter table public.notes enable row level security;

@@ -34,6 +34,7 @@ let viewDay = null;
 let logPage = 1;
 let pendingUpload = null;
 let realtimeChannel = null;
+let lateSubmitUnlockColumnsAvailable = false;
 
 const ESCAPE_MAP = Object.freeze({
   '&': '&amp;',
@@ -210,6 +211,37 @@ function task(date, key) {
   return row ? { ...row, status: normalizeStatus(row.status) } : { status: 'none' };
 }
 
+function hasLateSubmitUnlockColumns(item) {
+  return Object.prototype.hasOwnProperty.call(item || {}, 'late_submit_unlocked_at');
+}
+
+function supportsLateSubmitUnlockColumns() {
+  return lateSubmitUnlockColumnsAvailable || tasks.some(hasLateSubmitUnlockColumns);
+}
+
+function markLateSubmitUnlockColumns(rows) {
+  if ((rows || []).some(hasLateSubmitUnlockColumns)) {
+    lateSubmitUnlockColumnsAvailable = true;
+  }
+}
+
+function isLateSubmitUnlocked(item) {
+  const status = normalizeStatus(item?.status);
+  return Boolean(item?.late_submit_unlocked_at) && status !== 'approved' && status !== 'pending';
+}
+
+function canConnieSubmitTask(date, item) {
+  return ymd(date) === ymd(new Date()) || isLateSubmitUnlocked(item);
+}
+
+function clearLateSubmitUnlock(row) {
+  if (supportsLateSubmitUnlockColumns()) {
+    row.late_submit_unlocked_at = null;
+    row.late_submit_unlocked_by = null;
+  }
+  return row;
+}
+
 function isJaco() {
   return profile?.role === 'jaco';
 }
@@ -281,8 +313,8 @@ async function init() {
 }
 
 async function loadAll() {
-  const from = ymd(dayDate(0, -12));
-  const to = ymd(dayDate(6, 4));
+  const from = ymd(dayDate(0, Math.min(-12, weekOffset)));
+  const to = ymd(dayDate(6, Math.max(4, weekOffset)));
   const [taskRes, noteRes, adjRes] = await Promise.all([
     db.from('tasks').select('*').gte('task_date', from).lte('task_date', to).order('submitted_at', { ascending: false }),
     db.from('notes').select('*').eq('id', 1).maybeSingle(),
@@ -295,6 +327,7 @@ async function loadAll() {
   }
 
   tasks = taskRes.data || [];
+  markLateSubmitUnlockColumns(tasks);
   adjustments = adjRes.data || [];
 
   const parts = (noteRes.data?.content || '').split(NOTE_SEPARATOR);
@@ -626,10 +659,11 @@ function renderTaskCard(key, date, dayIndex, isToday) {
   const available = key !== 'listening' || hear(dayIndex);
   const currentTask = task(date, key);
   const status = normalizeStatus(currentTask.status);
+  const lateUnlocked = isLateSubmitUnlocked(currentTask);
   const proofImages = renderProofImages(currentTask);
 
   return `
-    <div class="task ${status} ${available ? '' : 'lock'}">
+    <div class="task ${status} ${lateUnlocked ? 'unlocked' : ''} ${available ? '' : 'lock'}">
       <div class="task-main">
         <div class="task-headline">
           <div class="emoji">${meta.emoji}</div>
@@ -641,32 +675,47 @@ function renderTaskCard(key, date, dayIndex, isToday) {
       </div>
       ${proofImages ? `<div class="task-proof-area">${proofImages}</div>` : ''}
       <div class="task-footer">
-        <div class="status ${taskStatusClass(status)}">${taskStatusText(status)}</div>
-        <div class="task-actions">${taskActions(key, date, dayIndex, status, available, isToday)}</div>
+        <div class="status ${taskStatusClass(status, currentTask)}">${taskStatusText(status, currentTask)}</div>
+        <div class="task-actions">${taskActions(key, date, dayIndex, status, available, isToday, currentTask)}</div>
       </div>
     </div>
   `;
 }
 
-function taskStatusClass(status) {
+function taskStatusClass(status, item) {
+  if (isLateSubmitUnlocked(item)) return 'status-unlocked';
   if (status === 'pending') return 'status-pending';
   if (status === 'approved') return 'status-approved';
   if (status === 'rejected') return 'status-rejected';
   return 'status-idle';
 }
 
-function taskStatusText(status) {
-  if (status === 'pending') return '⏳ 等待 Jaco 审核';
-  if (status === 'approved') return '✓ Jaco 已通过';
-  if (status === 'rejected') return '✕ 未通过，请重新提交';
+function taskStatusText(status, item) {
+  if (isLateSubmitUnlocked(item)) return 'Jaco 已开放补交';
+  if (status === 'pending') return '等待 Jaco 审核';
+  if (status === 'approved') return 'Jaco 已通过';
+  if (status === 'rejected') return '未通过，请重新提交';
   return '尚未提交';
 }
 
-function taskActions(key, date, dayIndex, status, available, isToday) {
+function uploadLabel(key, status, isToday) {
+  if (!isToday) {
+    return allowsMultipleProofs(key) ? '补交完成证明图片' : '补交完成证明';
+  }
+
+  if (status === 'pending') {
+    return allowsMultipleProofs(key) ? '更换证明图片' : '更换证明';
+  }
+
+  return allowsMultipleProofs(key) ? '上传完成证明图片' : '上传完成证明';
+}
+
+function taskActions(key, date, dayIndex, status, available, isToday, currentTask) {
   if (!available) return '<div class="task-action-note">今日无听力</div>';
 
   if (isJaco()) {
     const dateKey = ymd(date);
+    const lateUnlocked = isLateSubmitUnlocked(currentTask);
 
     if (status === 'pending') {
       return renderReviewButtons(dateKey, key);
@@ -676,15 +725,21 @@ function taskActions(key, date, dayIndex, status, available, isToday) {
       return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
     }
 
+    if (!isToday) {
+      if (lateUnlocked) {
+        return '<div class="task-action-note action-success">已开放补交</div>';
+      }
+
+      return `<button class="btn purple-btn wide-btn" onclick="unlockLateSubmit('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">开放补交</button>`;
+    }
+
     return '<div class="task-action-note">等待 Connie 提交</div>';
   }
 
-  if (!isToday) return '<div class="task-action-note">仅限当天提交</div>';
   if (status === 'approved') return '<div class="task-action-note action-success">积分已入账</div>';
+  if (!canConnieSubmitTask(date, currentTask)) return '<div class="task-action-note">仅限当天提交</div>';
 
-  const label = status === 'pending'
-    ? (allowsMultipleProofs(key) ? '更换证明图片' : '更换证明')
-    : (allowsMultipleProofs(key) ? '上传完成证明图片' : '上传完成证明');
+  const label = uploadLabel(key, status, isToday);
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${label}</button>`;
 }
 
@@ -776,20 +831,37 @@ function changeLogPage(page) {
   renderLog();
 }
 
-function changeWeek(offset) {
+async function changeWeek(offset) {
   weekOffset += offset;
   viewDay = null;
-  render();
+  await loadAll();
 }
 
-function goToday() {
+async function goToday() {
   weekOffset = 0;
   viewDay = null;
-  render();
+  await loadAll();
 }
 
 function upload(key, dayIndex) {
   if (!requireConnie()) return;
+  if (!TASK_KEYS.includes(key)) {
+    toast('未知任务类型');
+    return;
+  }
+
+  const date = dayDate(dayIndex);
+  const currentTask = task(date, key);
+  if (!canConnieSubmitTask(date, currentTask)) {
+    toast('这个任务还没有开放补交');
+    return;
+  }
+
+  if (normalizeStatus(currentTask.status) === 'approved') {
+    toast('这个任务已经通过了');
+    return;
+  }
+
   pendingUpload = { key, dayIndex };
   const fileInput = document.getElementById('file');
   fileInput.multiple = allowsMultipleProofs(key);
@@ -881,7 +953,7 @@ async function handleFile(event) {
       names.push(file.name);
     }
 
-    const row = {
+    const row = clearLateSubmitUnlock({
       task_date: dateKey,
       task_key: key,
       status: 'pending',
@@ -890,7 +962,7 @@ async function handleFile(event) {
       submitted_at: new Date().toISOString(),
       reviewed_at: null,
       reviewed_by: null,
-    };
+    });
     const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
     if (error) throw error;
@@ -903,6 +975,47 @@ async function handleFile(event) {
   await loadAll();
 }
 
+async function unlockLateSubmit(date, key) {
+  if (!requireJaco()) return;
+  if (!TASK_KEYS.includes(key) || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+    toast('任务参数无效');
+    return;
+  }
+
+  const currentTask = tasks.find((item) => item.task_date === date && item.task_key === key) || { status: 'none' };
+  const status = normalizeStatus(currentTask.status);
+  if (status === 'pending') {
+    toast('这个任务已经在等待审核');
+    return;
+  }
+
+  if (status === 'approved') {
+    toast('这个任务已经通过了');
+    return;
+  }
+
+  const row = {
+    task_date: date,
+    task_key: key,
+    status: 'rejected',
+    late_submit_unlocked_at: new Date().toISOString(),
+    late_submit_unlocked_by: session.user.id,
+  };
+  const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
+
+  if (error) {
+    const setupHint = String(error.message || '').includes('late_submit_unlocked')
+      ? '（请先在 Supabase SQL Editor 执行 supabase/rls.sql）'
+      : '';
+    toast(`开放补交失败：${error.message}${setupHint}`);
+    return;
+  }
+
+  lateSubmitUnlockColumnsAvailable = true;
+  toast('已给 Connie 开放补交机会');
+  await loadAll();
+}
+
 async function review(date, key, status) {
   if (!requireJaco()) return;
   if (!TASK_KEYS.includes(key) || !REVIEW_STATUSES.includes(status)) {
@@ -910,13 +1023,13 @@ async function review(date, key, status) {
     return;
   }
 
-  const row = {
+  const row = clearLateSubmitUnlock({
     task_date: date,
     task_key: key,
     status,
     reviewed_at: new Date().toISOString(),
     reviewed_by: session.user.id,
-  };
+  });
 
   if (status === 'rejected') {
     row.proof_url = null;
@@ -940,13 +1053,13 @@ async function revoke(date, key) {
     return;
   }
 
-  const row = {
+  const row = clearLateSubmitUnlock({
     task_date: date,
     task_key: key,
     status: 'pending',
     reviewed_at: null,
     reviewed_by: null,
-  };
+  });
   const { error } = await db.from('tasks').upsert(row, TASK_UPSERT_OPTIONS);
 
   if (error) {
@@ -1039,6 +1152,7 @@ Object.assign(window, {
   goToday,
   upload,
   handleFile,
+  unlockLateSubmit,
   review,
   revoke,
   adjustScore,
