@@ -478,6 +478,23 @@ function canConnieSubmitTask(date, item) {
   return ymd(date) === ymd(new Date()) || isLateSubmitUnlocked(item);
 }
 
+function isFutureDateValue(value) {
+  const dateKey = value instanceof Date ? ymd(value) : String(value || '');
+  return dateKey > ymd(new Date());
+}
+
+function submitKindForDate(value) {
+  return isFutureDateValue(value) ? '提交' : '补交';
+}
+
+function openSubmitText(value) {
+  return `开放${submitKindForDate(value)}`;
+}
+
+function openedSubmitText(value) {
+  return `已开放${submitKindForDate(value)}`;
+}
+
 function clearLateSubmitUnlock(row) {
   if (supportsLateSubmitUnlockColumns()) {
     row.late_submit_unlocked_at = null;
@@ -933,6 +950,7 @@ function renderTasks() {
   element.innerHTML = '';
 
   TASK_KEYS.forEach((key) => {
+    if (key === 'listening' && !hear(dayIndex)) return;
     element.insertAdjacentHTML('beforeend', renderTaskCard(key, date, dayIndex, isToday));
   });
 
@@ -1048,16 +1066,17 @@ function taskStatusText(status, item) {
     return '任务已批准，等待上传证明';
   }
 
-  if (isLateSubmitUnlocked(item)) return 'Jaco 已开放补交';
+  if (isLateSubmitUnlocked(item)) return `Jaco ${openedSubmitText(item?.task_date)}`;
   if (status === 'pending') return '等待 Jaco 审核';
   if (status === 'approved') return 'Jaco 已通过';
   if (status === 'rejected') return '未通过，请重新提交';
   return '尚未提交';
 }
 
-function uploadLabel(key, status, isToday) {
+function uploadLabel(key, status, isToday, date) {
   if (!isToday) {
-    return allowsMultipleProofs(key) ? '补交完成证明图片' : '补交完成证明';
+    const kind = submitKindForDate(date);
+    return allowsMultipleProofs(key) ? `${kind}完成证明图片` : `${kind}完成证明`;
   }
 
   if (status === 'pending') {
@@ -1088,19 +1107,21 @@ function taskActions(key, date, dayIndex, status, available, isToday, currentTas
 
     if (!isToday) {
       if (lateUnlocked) {
-        return '<div class="task-action-note action-success">已开放补交</div>';
+        return `<div class="task-action-note action-success">${openedSubmitText(date)}</div>`;
       }
 
-      return `<button class="btn purple-btn wide-btn" onclick="unlockLateSubmit('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">开放补交</button>`;
+      return `<button class="btn purple-btn wide-btn" onclick="unlockLateSubmit('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">${openSubmitText(date)}</button>`;
     }
 
     return '<div class="task-action-note">等待 Connie 提交</div>';
   }
 
   if (status === 'approved') return '<div class="task-action-note action-success">积分已入账</div>';
-  if (!canConnieSubmitTask(date, currentTask)) return '<div class="task-action-note">仅限当天提交</div>';
+  if (!canConnieSubmitTask(date, currentTask)) {
+    return `<div class="task-action-note">${isFutureDateValue(date) ? `等待 Jaco ${openSubmitText(date)}` : '仅限当天提交'}</div>`;
+  }
 
-  const label = uploadLabel(key, status, isToday);
+  const label = uploadLabel(key, status, isToday, date);
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${label}</button>`;
 }
 
@@ -1367,7 +1388,7 @@ function upload(key, dayIndex) {
   }
 
   if (!custom && !canConnieSubmitTask(date, currentTask)) {
-    toast('这个任务还没有开放补交');
+    toast(`这个任务还没有${openSubmitText(date)}`);
     return;
   }
 
@@ -1534,12 +1555,12 @@ async function unlockLateSubmit(date, key) {
     const setupHint = String(error.message || '').includes('late_submit_unlocked')
       ? '（请先在 Supabase SQL Editor 执行 supabase/rls.sql）'
       : '';
-    toast(`开放补交失败：${error.message}${setupHint}`);
+    toast(`${openSubmitText(date)}失败：${error.message}${setupHint}`);
     return;
   }
 
   lateSubmitUnlockColumnsAvailable = true;
-  toast('已给 Connie 开放补交机会');
+  toast(`已给 Connie ${openSubmitText(date)}机会`);
   await loadAll();
 }
 

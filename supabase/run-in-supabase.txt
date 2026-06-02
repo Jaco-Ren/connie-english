@@ -65,37 +65,6 @@ as $$
   select public.current_profile_role() = 'connie'
 $$;
 
-revoke all on function public.current_profile_role() from public;
-revoke all on function public.is_jaco() from public;
-revoke all on function public.is_connie() from public;
-grant execute on function public.current_profile_role() to authenticated;
-grant execute on function public.is_jaco() to authenticated;
-grant execute on function public.is_connie() to authenticated;
-
--- Baseline grants. RLS still decides which rows/actions are allowed.
-grant usage on schema public to authenticated;
-grant select on public.profiles to authenticated;
-grant select on public.tasks to authenticated;
-grant insert, update on public.tasks to authenticated;
-grant select, insert, update on public.notes to authenticated;
-grant select, insert, delete on public.score_adjustments to authenticated;
-grant usage, select on all sequences in schema public to authenticated;
-
-alter table public.tasks
-add column if not exists late_submit_unlocked_at timestamptz,
-add column if not exists late_submit_unlocked_by uuid,
-add column if not exists custom_title text,
-add column if not exists custom_points integer,
-add column if not exists custom_created_by uuid,
-add column if not exists custom_review_status text,
-add column if not exists custom_requested_at timestamptz,
-add column if not exists custom_reviewed_at timestamptz,
-add column if not exists custom_reviewed_by uuid,
-add column if not exists custom_repeat_rule text,
-add column if not exists custom_weekdays text,
-add column if not exists custom_series_id text,
-add column if not exists custom_is_template boolean;
-
 create or replace function public.has_approved_custom_task_template(
   series_id text,
   requested_task_key text,
@@ -123,8 +92,38 @@ as $$
   )
 $$;
 
+revoke all on function public.current_profile_role() from public;
+revoke all on function public.is_jaco() from public;
+revoke all on function public.is_connie() from public;
 revoke all on function public.has_approved_custom_task_template(text, text, uuid, date) from public;
+grant execute on function public.current_profile_role() to authenticated;
+grant execute on function public.is_jaco() to authenticated;
+grant execute on function public.is_connie() to authenticated;
 grant execute on function public.has_approved_custom_task_template(text, text, uuid, date) to authenticated;
+
+-- Baseline grants. RLS still decides which rows/actions are allowed.
+grant usage on schema public to authenticated;
+grant select on public.profiles to authenticated;
+grant select on public.tasks to authenticated;
+grant insert, update on public.tasks to authenticated;
+grant select, insert, update on public.notes to authenticated;
+grant select, insert, delete on public.score_adjustments to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+
+alter table public.tasks
+add column if not exists late_submit_unlocked_at timestamptz,
+add column if not exists late_submit_unlocked_by uuid,
+add column if not exists custom_title text,
+add column if not exists custom_points integer,
+add column if not exists custom_created_by uuid,
+add column if not exists custom_review_status text,
+add column if not exists custom_requested_at timestamptz,
+add column if not exists custom_reviewed_at timestamptz,
+add column if not exists custom_reviewed_by uuid,
+add column if not exists custom_repeat_rule text,
+add column if not exists custom_weekdays text,
+add column if not exists custom_series_id text,
+add column if not exists custom_is_template boolean;
 
 alter table public.tasks
 drop constraint if exists tasks_status_check;
