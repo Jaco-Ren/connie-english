@@ -402,7 +402,7 @@ function renderJacoNote() {
           <div class="note-kicker">Jaco Note</div>
           <div class="note-heading">给 Connie 的留言</div>
         </div>
-        <span class="note-pill">审核备注</span>
+        <span class="note-pill">爱心备注</span>
       </div>
       <div class="note-compose">
         <div class="note-field-head">
@@ -439,9 +439,10 @@ function renderConnieNote() {
           <div class="note-kicker">Jaco Note</div>
           <div class="note-heading">Jaco 对你说</div>
         </div>
+        <span class="note-pill">爱心备注</span>
       </div>
       <div class="note-compose">
-        <div class="note-text">${note ? escapeHTML(note) : '<span class="note-muted">暂无备注</span>'}</div>
+        <div class="note-text">${note ? escapeHTML(note) : '<span class="note-muted">暂无爱心备注</span>'}</div>
       </div>
       <div class="note-divider">
         <div class="note-field-head">
@@ -494,11 +495,11 @@ async function saveNote() {
   });
 
   if (error) {
-    toast('备注保存失败：' + error.message);
+    toast('爱心备注保存失败：' + error.message);
     return;
   }
 
-  toast('✓ 备注已保存');
+  toast('✓ 爱心备注已保存');
   await loadAll();
 }
 
