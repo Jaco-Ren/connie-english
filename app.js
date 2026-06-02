@@ -974,6 +974,8 @@ function renderTaskCard(key, date, dayIndex, isToday, item = null) {
   const custom = isCustomTask(currentTask);
   const meta = metaFor(key, currentTask);
   const available = custom || key !== 'listening' || hear(dayIndex);
+  if (!available) return '';
+
   const status = normalizeStatus(currentTask.status);
   const cardStatus = custom && !isCustomTaskApproved(currentTask) ? customReviewStatus(currentTask) : status;
   const lateUnlocked = isLateSubmitUnlocked(currentTask);
@@ -1036,7 +1038,7 @@ function renderCustomTaskForm(dayIndex) {
       <div class="task-footer">
         <div class="status status-idle">先审核任务</div>
         <div class="task-actions">
-          <button class="btn gold" onclick="submitCustomTask(${dayIndex})">申报给 Jaco</button>
+          <button class="btn gold" onclick="submitCustomTask(${dayIndex})">To Jaco</button>
         </div>
       </div>
     </div>
@@ -1087,7 +1089,7 @@ function uploadLabel(key, status, isToday, date) {
 }
 
 function taskActions(key, date, dayIndex, status, available, isToday, currentTask) {
-  if (!available) return '<div class="task-action-note">今日无听力</div>';
+  if (!available) return '';
 
   if (isCustomTask(currentTask)) {
     return customTaskActions(key, date, dayIndex, status, currentTask);
