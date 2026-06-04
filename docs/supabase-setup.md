@@ -57,6 +57,7 @@ check (role in ('connie', 'jaco'));
 | `custom_weekdays` | `text` | Comma-separated weekday numbers for weekly tasks, where Sunday is `0` |
 | `custom_series_id` | `text` | Stable id shared by a recurring task template and its completion rows |
 | `custom_is_template` | `boolean` | `true` for the recurring task template row |
+| `custom_deleted_dates` | `text` | Comma-separated `YYYY-MM-DD` dates excluded from a weekly recurring custom task |
 
 Recommended constraints:
 
@@ -88,6 +89,7 @@ check (
     and custom_weekdays is null
     and custom_series_id is null
     and custom_is_template is null
+    and custom_deleted_dates is null
   )
   or (
     task_key ~ '^custom-[a-z0-9-]+$'
@@ -96,6 +98,10 @@ check (
     and custom_created_by is not null
     and custom_review_status in ('pending', 'approved', 'rejected')
     and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+    and (
+      custom_deleted_dates is null
+      or custom_deleted_dates ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}(,[0-9]{4}-[0-9]{2}-[0-9]{2})*$'
+    )
     and (
       (
         coalesce(custom_repeat_rule, 'once') = 'once'
@@ -147,7 +153,8 @@ add column if not exists custom_reviewed_by uuid,
 add column if not exists custom_repeat_rule text,
 add column if not exists custom_weekdays text,
 add column if not exists custom_series_id text,
-add column if not exists custom_is_template boolean;
+add column if not exists custom_is_template boolean,
+add column if not exists custom_deleted_dates text;
 ```
 
 ### `public.notes`
@@ -199,8 +206,9 @@ After applying [supabase/rls.sql](../supabase/rls.sql):
 - Connie can create or replace pending task submissions.
 - Connie cannot modify approved task rows from the browser client.
 - Connie can request pending `custom-*` tasks with a title, point value, owner, and either a single-use or weekly recurring rule.
-- Jaco can approve, reject, revoke approval, or open a past task for late submission.
+- Jaco can approve, reject, revoke approval, open a past task for late submission, or delete Connie-created custom tasks.
 - Jaco approval of a custom task request only adds it to Connie's task list. For weekly tasks, the approved template generates task cards on matching weekdays from the request date onward.
+- Deleting one date from a weekly custom task stores that date in `custom_deleted_dates`; deleting the whole cycle removes the matching `custom_series_id` rows.
 - Points are awarded only after Connie uploads proof for a specific date and Jaco approves that completion proof.
 - Both known roles can read and update the shared `notes` row.
 - Only Jaco can create or delete score adjustments.
@@ -241,5 +249,7 @@ After running the script:
 10. Log in as Jaco, approve the proof, and confirm Connie's score increases by the custom point value.
 11. Log in as Connie and request a weekly custom task with two weekdays selected.
 12. Log in as Jaco and approve the weekly request; confirm it appears on matching weekdays only.
-13. Try creating a score adjustment as Connie through the browser console or API; it should fail.
-14. Try submitting a replacement proof for an approved task as Connie; it should fail.
+13. Use Jaco's task card buttons to delete one occurrence, then confirm the rest of the weekly cycle remains.
+14. Use Jaco's task card buttons to delete the whole weekly cycle, then confirm future matching weekdays no longer show it.
+15. Try creating a score adjustment as Connie through the browser console or API; it should fail.
+16. Try submitting a replacement proof for an approved task as Connie; it should fail.

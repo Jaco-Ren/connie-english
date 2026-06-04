@@ -76,7 +76,7 @@ grant execute on function public.is_connie() to authenticated;
 grant usage on schema public to authenticated;
 grant select on public.profiles to authenticated;
 grant select on public.tasks to authenticated;
-grant insert, update on public.tasks to authenticated;
+grant insert, update, delete on public.tasks to authenticated;
 grant select, insert, update on public.notes to authenticated;
 grant select, insert, delete on public.score_adjustments to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
@@ -94,7 +94,8 @@ add column if not exists custom_reviewed_by uuid,
 add column if not exists custom_repeat_rule text,
 add column if not exists custom_weekdays text,
 add column if not exists custom_series_id text,
-add column if not exists custom_is_template boolean;
+add column if not exists custom_is_template boolean,
+add column if not exists custom_deleted_dates text;
 
 create or replace function public.has_approved_custom_task_template(
   series_id text,
@@ -119,6 +120,7 @@ as $$
       and coalesce(template.custom_is_template, false) = true
       and template.task_date <= target_date
       and (',' || coalesce(template.custom_weekdays, '') || ',') like ('%,' || extract(dow from target_date)::int || ',%')
+      and (',' || coalesce(template.custom_deleted_dates, '') || ',') not like ('%,' || target_date::text || ',%')
     limit 1
   )
 $$;
@@ -162,6 +164,7 @@ check (
     and custom_weekdays is null
     and custom_series_id is null
     and custom_is_template is null
+    and custom_deleted_dates is null
   )
   or (
     task_key ~ '^custom-[a-z0-9-]+$'
@@ -170,6 +173,10 @@ check (
     and custom_created_by is not null
     and custom_review_status in ('pending', 'approved', 'rejected')
     and coalesce(custom_repeat_rule, 'once') in ('once', 'weekly')
+    and (
+      custom_deleted_dates is null
+      or custom_deleted_dates ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}(,[0-9]{4}-[0-9]{2}-[0-9]{2})*$'
+    )
     and (
       (
         coalesce(custom_repeat_rule, 'once') = 'once'
@@ -239,6 +246,7 @@ with check (
       and custom_weekdays is null
       and custom_series_id is null
       and custom_is_template is null
+      and custom_deleted_dates is null
       and reviewed_at is null
       and reviewed_by is null
     )
@@ -332,6 +340,7 @@ with check (
       and custom_weekdays is null
       and custom_series_id is null
       and custom_is_template is null
+      and custom_deleted_dates is null
       and reviewed_at is null
       and reviewed_by is null
     )
@@ -390,6 +399,7 @@ with check (
       and custom_weekdays is null
       and custom_series_id is null
       and custom_is_template is null
+      and custom_deleted_dates is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
@@ -438,6 +448,7 @@ with check (
       and custom_weekdays is null
       and custom_series_id is null
       and custom_is_template is null
+      and custom_deleted_dates is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
@@ -461,6 +472,16 @@ with check (
       )
     )
   )
+);
+
+drop policy if exists "tasks_delete_jaco_custom" on public.tasks;
+create policy "tasks_delete_jaco_custom"
+on public.tasks
+for delete
+to authenticated
+using (
+  public.is_jaco()
+  and task_key ~ '^custom-[a-z0-9-]+$'
 );
 
 drop policy if exists "notes_select_authenticated" on public.notes;

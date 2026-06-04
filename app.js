@@ -14,6 +14,7 @@ const REVIEW_STATUSES = Object.freeze(['approved', 'rejected']);
 const CUSTOM_REVIEW_STATUSES = Object.freeze(['pending', 'approved', 'rejected']);
 const CUSTOM_TASK_PREFIX = 'custom-';
 const CUSTOM_TASK_KEY_PATTERN = /^custom-[a-z0-9-]+$/;
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CUSTOM_TITLE_MAX = 40;
 const CUSTOM_POINTS_MIN = 1;
 const CUSTOM_POINTS_MAX = 100;
@@ -96,6 +97,10 @@ function isValidTaskKey(key) {
   return TASK_KEYS.includes(key) || isCustomTaskKey(key);
 }
 
+function isValidDateKey(value) {
+  return DATE_KEY_PATTERN.test(String(value || ''));
+}
+
 function isCustomTask(itemOrKey) {
   const key = typeof itemOrKey === 'string' ? itemOrKey : itemOrKey?.task_key;
   return isCustomTaskKey(key);
@@ -145,6 +150,37 @@ function serializeCustomWeekdays(days) {
     .map((day) => Number(day))
     .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)))
     .join(',');
+}
+
+function parseCustomDeletedDates(value) {
+  if (!value) return [];
+  const text = String(value).trim();
+  if (!text) return [];
+
+  let raw = [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) raw = parsed;
+  } catch (_) {
+    raw = text.split(',');
+  }
+
+  return Array.from(new Set(raw
+    .map((date) => String(date || '').trim())
+    .filter(isValidDateKey)))
+    .sort();
+}
+
+function serializeCustomDeletedDates(dates) {
+  const cleaned = Array.from(new Set((dates || [])
+    .map((date) => String(date || '').trim())
+    .filter(isValidDateKey)))
+    .sort();
+  return cleaned.length ? cleaned.join(',') : null;
+}
+
+function customDeletedDates(item) {
+  return parseCustomDeletedDates(item?.custom_deleted_dates);
 }
 
 function customWeekdays(item) {
@@ -363,7 +399,9 @@ function taskByDateKey(dateKey, key) {
 
 function recurringTemplateMatchesDate(template, date) {
   if (!isRecurringTemplate(template) || !isCustomTaskApproved(template)) return false;
-  if (ymd(date) < template.task_date) return false;
+  const dateKey = ymd(date);
+  if (dateKey < template.task_date) return false;
+  if (customDeletedDates(template).includes(dateKey)) return false;
   return customWeekdays(template).includes(date.getDay());
 }
 
@@ -420,7 +458,20 @@ function keepCustomTaskFields(row) {
   if (row.custom_weekdays === undefined) row.custom_weekdays = existing.custom_weekdays;
   if (row.custom_series_id === undefined) row.custom_series_id = existing.custom_series_id;
   if (row.custom_is_template === undefined) row.custom_is_template = Boolean(existing.custom_is_template) && row.task_date === existing.task_date;
+  if (row.custom_deleted_dates === undefined) row.custom_deleted_dates = existing.custom_deleted_dates;
   return row;
+}
+
+function isCustomTaskDeletedOnDate(item, date) {
+  if (!isCustomTask(item)) return false;
+  const template = isRecurringTemplate(item) ? item : recurringTemplateForSeries(item);
+  return Boolean(template && customDeletedDates(template).includes(ymd(date)));
+}
+
+function shouldCountTaskPoints(item) {
+  if (normalizeStatus(item?.status) !== 'approved') return false;
+  if (!isCustomTask(item)) return true;
+  return isCustomTaskApproved(item) && !isCustomTaskDeletedOnDate(item, dateFromYmd(item.task_date));
 }
 
 function customTaskIsVisibleOnDate(item, date) {
@@ -437,6 +488,7 @@ function customTaskIsVisibleOnDate(item, date) {
   }
 
   const template = isRecurringTemplate(item) ? item : recurringTemplateForSeries(item);
+  if (template && customDeletedDates(template).includes(dateKey)) return false;
   if (template) return recurringTemplateMatchesDate(template, date);
 
   return dateKey >= item.task_date && customWeekdays(item).includes(date.getDay());
@@ -659,7 +711,7 @@ function isFull(dayIndex, off = weekOffset) {
 function renderHero() {
   let points = 0;
   tasks.forEach((item) => {
-    if (normalizeStatus(item.status) === 'approved' && (!isCustomTask(item) || isCustomTaskApproved(item))) {
+    if (shouldCountTaskPoints(item)) {
       points += pointsFor(item);
     }
   });
@@ -855,6 +907,7 @@ function renderReview() {
 }
 
 function needsJacoReview(item) {
+  if (isCustomTask(item) && isCustomTaskDeletedOnDate(item, dateFromYmd(item.task_date))) return false;
   if (!isCustomTask(item)) return normalizeStatus(item.status) === 'pending';
   return customReviewStatus(item) === 'pending'
     || (isCustomTaskApproved(item) && normalizeStatus(item.status) === 'pending');
@@ -902,6 +955,37 @@ function renderReviewButtons(date, key) {
     <div class="review-actions">
       <button class="btn green" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','approved')">通过</button>
       <button class="btn red" onclick="review('${jsArgAttr(date)}','${jsArgAttr(key)}','rejected')">不通过</button>
+    </div>
+  `;
+}
+
+function renderCustomDeleteActions(date, key, item) {
+  if (!isJaco() || !isCustomTask(item)) return '';
+
+  if (customRepeatRule(item) === 'weekly') {
+    return `
+      <div class="custom-delete-row">
+        <button class="mini-btn delete-task-btn" onclick="deleteCustomTask('${jsArgAttr(date)}','${jsArgAttr(key)}','single')">删除本次</button>
+        <button class="mini-btn delete-task-btn danger" onclick="deleteCustomTask('${jsArgAttr(date)}','${jsArgAttr(key)}','series')">删除周期</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="custom-delete-row single">
+      <button class="mini-btn delete-task-btn danger" onclick="deleteCustomTask('${jsArgAttr(date)}','${jsArgAttr(key)}','single')">删除任务</button>
+    </div>
+  `;
+}
+
+function withCustomDeleteActions(primaryAction, date, key, item) {
+  const deleteActions = renderCustomDeleteActions(date, key, item);
+  if (!deleteActions) return primaryAction;
+
+  return `
+    <div class="custom-action-stack">
+      ${primaryAction}
+      ${deleteActions}
     </div>
   `;
 }
@@ -1130,32 +1214,38 @@ function taskActions(key, date, dayIndex, status, available, isToday, currentTas
 function customTaskActions(key, date, dayIndex, status, currentTask) {
   const dateKey = ymd(date);
   const reviewStatus = customReviewStatus(currentTask);
+  let primaryAction = '';
 
   if (isJaco()) {
     if (reviewStatus === 'pending') {
-      return renderCustomTaskReviewButtons(dateKey, key);
+      primaryAction = renderCustomTaskReviewButtons(dateKey, key);
+      return withCustomDeleteActions(primaryAction, dateKey, key, currentTask);
     }
 
     if (reviewStatus === 'rejected') {
-      return '<div class="task-action-note">任务申请已退回</div>';
+      primaryAction = '<div class="task-action-note">任务申请已退回</div>';
+      return withCustomDeleteActions(primaryAction, dateKey, key, currentTask);
     }
 
     if (status === 'pending') {
-      return renderReviewButtons(dateKey, key);
+      primaryAction = renderReviewButtons(dateKey, key);
+      return withCustomDeleteActions(primaryAction, dateKey, key, currentTask);
     }
 
     if (status === 'approved') {
-      return `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
+      primaryAction = `<button class="btn muted-btn wide-btn" onclick="revoke('${jsArgAttr(dateKey)}','${jsArgAttr(key)}')">撤销通过</button>`;
+      return withCustomDeleteActions(primaryAction, dateKey, key, currentTask);
     }
 
-    return '<div class="task-action-note">等待 Connie 上传证明</div>';
+    primaryAction = '<div class="task-action-note">等待 Connie 上传证明</div>';
+    return withCustomDeleteActions(primaryAction, dateKey, key, currentTask);
   }
 
-  if (reviewStatus === 'pending') return '<div class="task-action-note">已申报，等待 Jaco 批准任务</div>';
-  if (reviewStatus === 'rejected') return '<div class="task-action-note">任务申请未通过，可重新申报</div>';
-  if (status === 'approved') return '<div class="task-action-note action-success">自定义积分已入账</div>';
-  if (status === 'pending') return '<div class="task-action-note">完成证明等待 Jaco 审核</div>';
-  if (!canConnieSubmitTask(date, currentTask)) return '<div class="task-action-note">仅限当天上传证明</div>';
+  if (reviewStatus === 'pending') return withCustomDeleteActions('<div class="task-action-note">已申报，等待 Jaco 批准任务</div>', dateKey, key, currentTask);
+  if (reviewStatus === 'rejected') return withCustomDeleteActions('<div class="task-action-note">任务申请未通过，可重新申报</div>', dateKey, key, currentTask);
+  if (status === 'approved') return withCustomDeleteActions('<div class="task-action-note action-success">自定义积分已入账</div>', dateKey, key, currentTask);
+  if (status === 'pending') return withCustomDeleteActions('<div class="task-action-note">完成证明等待 Jaco 审核</div>', dateKey, key, currentTask);
+  if (!canConnieSubmitTask(date, currentTask)) return withCustomDeleteActions('<div class="task-action-note">仅限当天上传证明</div>', dateKey, key, currentTask);
   return `<button class="btn gold" onclick="upload('${jsArgAttr(key)}',${dayIndex})">${status === 'rejected' ? '重新上传完成证明' : '上传完成证明图片'}</button>`;
 }
 
@@ -1187,8 +1277,7 @@ function renderStats() {
   tasks.forEach((item) => {
     if (
       isCustomTask(item)
-      && isCustomTaskApproved(item)
-      && normalizeStatus(item.status) === 'approved'
+      && shouldCountTaskPoints(item)
       && item.task_date >= weekFrom
       && item.task_date <= weekTo
     ) {
@@ -1215,7 +1304,7 @@ function renderStats() {
 
 function renderLog() {
   const entries = tasks
-    .filter((item) => item.submitted_at)
+    .filter((item) => item.submitted_at && (!isCustomTask(item) || !isCustomTaskDeletedOnDate(item, dateFromYmd(item.task_date))))
     .slice()
     .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)));
   const pageCount = Math.max(1, Math.ceil(entries.length / LOG_PAGE_SIZE));
@@ -1664,6 +1753,113 @@ async function revoke(date, key) {
   await loadAll();
 }
 
+function customTaskForDelete(date, key) {
+  const existing = taskByDateKey(date, key);
+  if (existing && isCustomTask(existing)) return existing;
+  return recurringTemplateForDate(dateFromYmd(date), key);
+}
+
+function recurringTemplateForDelete(date, key, item) {
+  if (isRecurringTemplate(item)) return item;
+  return recurringTemplateForSeries(item) || recurringTemplateForDate(dateFromYmd(date), key);
+}
+
+function taskDeleteSetupHint(error) {
+  const message = String(error?.message || '');
+  return /custom_deleted_dates|row-level security|permission|delete/i.test(message)
+    ? '（请先在 Supabase SQL Editor 执行 supabase/rls.sql）'
+    : '';
+}
+
+async function deleteSingleRecurringOccurrence(date, key, item) {
+  const template = recurringTemplateForDelete(date, key, item);
+  if (!template) {
+    return db.from('tasks').delete().eq('task_date', date).eq('task_key', key);
+  }
+
+  const deletedDates = serializeCustomDeletedDates([...customDeletedDates(template), date]);
+  const templateUpdate = { custom_deleted_dates: deletedDates };
+  if (template.task_date === date) {
+    Object.assign(templateUpdate, clearLateSubmitUnlock({
+      status: 'none',
+      proof_url: null,
+      proof_name: null,
+      submitted_at: null,
+      reviewed_at: null,
+      reviewed_by: null,
+    }));
+  }
+
+  const templateRes = await db
+    .from('tasks')
+    .update(templateUpdate)
+    .eq('task_date', template.task_date)
+    .eq('task_key', key);
+
+  if (templateRes.error) return templateRes;
+
+  const existing = taskByDateKey(date, key);
+  if (existing && !isRecurringTemplate(existing)) {
+    const cleanupRes = await db.from('tasks').delete().eq('task_date', date).eq('task_key', key);
+    if (cleanupRes.error) return { ...cleanupRes, partial: true };
+  }
+
+  return { error: null };
+}
+
+async function deleteCustomTask(date, key, scope = 'single') {
+  if (!requireJaco()) return;
+  if (!isValidDateKey(date) || !isCustomTaskKey(key) || !['single', 'series'].includes(scope)) {
+    toast('删除参数无效');
+    return;
+  }
+
+  const item = customTaskForDelete(date, key);
+  if (!item || !isCustomTask(item)) {
+    toast('没有找到这个自定义任务');
+    return;
+  }
+
+  const repeatRule = customRepeatRule(item);
+  const deleteSeries = scope === 'series' && repeatRule === 'weekly';
+  const title = customTaskTitle(item);
+  const confirmText = deleteSeries
+    ? `确定删除整个周期任务「${title}」吗？同周期已提交/已通过的记录和积分也会一起移除。`
+    : repeatRule === 'weekly'
+      ? `确定只删除 ${date} 这一次「${title}」吗？周期里的其他日期会保留。`
+      : `确定删除任务「${title}」吗？已通过的积分也会一起移除。`;
+
+  if (!confirm(confirmText)) return;
+
+  let result = { error: null };
+  if (deleteSeries) {
+    const seriesId = item.custom_series_id || key;
+    result = await db
+      .from('tasks')
+      .delete()
+      .eq('task_key', key)
+      .eq('custom_series_id', seriesId);
+  } else if (repeatRule === 'weekly') {
+    result = await deleteSingleRecurringOccurrence(date, key, item);
+  } else {
+    result = await db.from('tasks').delete().eq('task_date', date).eq('task_key', key);
+  }
+
+  if (result.error) {
+    if (result.partial) {
+      toast(`已隐藏本次，但清理提交记录失败：${result.error.message}${taskDeleteSetupHint(result.error)}`);
+      await loadAll();
+      return;
+    }
+
+    toast(`删除失败：${result.error.message}${taskDeleteSetupHint(result.error)}`);
+    return;
+  }
+
+  toast(deleteSeries ? '已删除整个周期任务' : '已删除任务');
+  await loadAll();
+}
+
 async function adjustScore() {
   if (!requireJaco()) return;
 
@@ -1751,6 +1947,7 @@ Object.assign(window, {
   reviewCustomTask,
   review,
   revoke,
+  deleteCustomTask,
   adjustScore,
   deleteAdjustment,
   showImg,
