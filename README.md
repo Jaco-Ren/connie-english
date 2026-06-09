@@ -19,7 +19,7 @@ The project is built with vanilla HTML, CSS, and JavaScript. The backend uses Su
 | Daily tasks | Vocabulary `+5`, CET-4 reading `+7`, CET-4 listening `+8`; listening follows an every-other-day schedule |
 | Proof submission | Connie can upload image proof; reading and listening support multiple proof images |
 | Image processing | Browser-side JPEG compression with a maximum width of 1000px |
-| Review workflow | Jaco can approve, reject, revoke approval, reopen expired tasks, or delete Connie-created custom tasks; only `approved` tasks count toward points |
+| Review workflow | Jaco can approve, reject, revoke approval, reopen expired tasks, or stop future Connie-created custom tasks; only `approved` tasks count toward points |
 | Points system | Task points are calculated automatically and combined with manual score adjustments |
 | Notes | Jaco can leave notes for Connie, and Connie can leave messages for Jaco |
 | Weekly progress | Weekly completion rate, full-attendance days, streak counter, and submission log |
@@ -128,7 +128,7 @@ The app can be deployed to Vercel as a static site:
 - The browser only uses a Supabase publishable key.
 - Core authorization relies on Supabase RLS, not hidden frontend buttons.
 - Connie can submit or replace `pending/rejected` tasks, but cannot update approved tasks from the browser client.
-- Jaco can review tasks, revoke approval, reopen expired tasks for late submission, delete Connie-created custom tasks, and create or delete manual score adjustments.
+- Jaco can review tasks, revoke approval, reopen expired tasks for late submission, stop future Connie-created custom tasks without removing historical points, and create or delete manual score adjustments.
 - The `proofs` bucket is currently public because the frontend stores public image URLs.
 - If proof images need stronger privacy later, switch to a private bucket and use signed URLs in the frontend.
 

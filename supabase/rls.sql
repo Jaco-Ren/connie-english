@@ -95,7 +95,8 @@ add column if not exists custom_repeat_rule text,
 add column if not exists custom_weekdays text,
 add column if not exists custom_series_id text,
 add column if not exists custom_is_template boolean,
-add column if not exists custom_deleted_dates text;
+add column if not exists custom_deleted_dates text,
+add column if not exists custom_stopped_from date;
 
 create or replace function public.has_approved_custom_task_template(
   series_id text,
@@ -119,6 +120,7 @@ as $$
       and template.custom_repeat_rule = 'weekly'
       and coalesce(template.custom_is_template, false) = true
       and template.task_date <= target_date
+      and (template.custom_stopped_from is null or target_date < template.custom_stopped_from)
       and (',' || coalesce(template.custom_weekdays, '') || ',') like ('%,' || extract(dow from target_date)::int || ',%')
       and (',' || coalesce(template.custom_deleted_dates, '') || ',') not like ('%,' || target_date::text || ',%')
     limit 1
@@ -165,6 +167,7 @@ check (
     and custom_series_id is null
     and custom_is_template is null
     and custom_deleted_dates is null
+    and custom_stopped_from is null
   )
   or (
     task_key ~ '^custom-[a-z0-9-]+$'
@@ -176,6 +179,13 @@ check (
     and (
       custom_deleted_dates is null
       or custom_deleted_dates ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}(,[0-9]{4}-[0-9]{2}-[0-9]{2})*$'
+    )
+    and (
+      custom_stopped_from is null
+      or (
+        custom_repeat_rule = 'weekly'
+        and custom_stopped_from >= task_date
+      )
     )
     and (
       (
@@ -247,6 +257,7 @@ with check (
       and custom_series_id is null
       and custom_is_template is null
       and custom_deleted_dates is null
+      and custom_stopped_from is null
       and reviewed_at is null
       and reviewed_by is null
     )
@@ -279,6 +290,7 @@ with check (
       and submitted_at is null
       and reviewed_at is null
       and reviewed_by is null
+      and custom_stopped_from is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
@@ -341,6 +353,7 @@ with check (
       and custom_series_id is null
       and custom_is_template is null
       and custom_deleted_dates is null
+      and custom_stopped_from is null
       and reviewed_at is null
       and reviewed_by is null
     )
@@ -370,6 +383,7 @@ with check (
       and submitted_at is not null
       and reviewed_at is null
       and reviewed_by is null
+      and (custom_stopped_from is null or task_date < custom_stopped_from)
     )
   )
 );
@@ -400,6 +414,7 @@ with check (
       and custom_series_id is null
       and custom_is_template is null
       and custom_deleted_dates is null
+      and custom_stopped_from is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
@@ -449,6 +464,7 @@ with check (
       and custom_series_id is null
       and custom_is_template is null
       and custom_deleted_dates is null
+      and custom_stopped_from is null
     )
     or (
       task_key ~ '^custom-[a-z0-9-]+$'
