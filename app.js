@@ -594,6 +594,8 @@ function requireConnie() {
 }
 
 async function signIn() {
+  hideLoginError();
+
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
 
@@ -604,54 +606,23 @@ async function signIn() {
 
   const { error } = await db.auth.signInWithPassword({ email, password });
   if (error) {
-    showLoginErrorDialog('登录失败：邮箱或密码错误，请再试一次');
+    showLoginError();
     return;
   }
 
   await init();
 }
 
-function showLoginErrorDialog(messageText) {
-  const existingDialog = document.querySelector('.login-error-modal');
-  if (existingDialog) existingDialog.remove();
-
-  const overlay = document.createElement('div');
-  overlay.className = 'login-error-modal';
-
-  const dialog = document.createElement('div');
-  dialog.className = 'login-error-dialog';
-  dialog.setAttribute('role', 'alertdialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-describedby', 'login-error-message');
-
-  const closeButton = document.createElement('button');
-  closeButton.className = 'login-error-close';
-  closeButton.type = 'button';
-  closeButton.setAttribute('aria-label', '关闭登录失败提示');
-  closeButton.textContent = '×';
-
-  const icon = document.createElement('div');
-  icon.className = 'login-error-icon';
-  icon.textContent = '!';
-
-  const message = document.createElement('p');
-  message.id = 'login-error-message';
-  message.textContent = messageText;
-
-  const confirmButton = document.createElement('button');
-  confirmButton.className = 'login-error-confirm';
-  confirmButton.type = 'button';
-  confirmButton.textContent = '知道了';
-
-  const closeDialog = () => overlay.remove();
-  closeButton.addEventListener('click', closeDialog);
-  confirmButton.addEventListener('click', closeDialog);
-
-  dialog.append(closeButton, icon, message, confirmButton);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-  confirmButton.focus();
+function showLoginError() {
+  document.getElementById('login-error')?.classList.remove('hidden');
 }
+
+function hideLoginError() {
+  document.getElementById('login-error')?.classList.add('hidden');
+}
+
+document.getElementById('email')?.addEventListener('input', hideLoginError);
+document.getElementById('password')?.addEventListener('input', hideLoginError);
 
 async function signOut() {
   await db.auth.signOut();
