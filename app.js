@@ -600,7 +600,7 @@ async function signIn() {
   const password = document.getElementById('password').value;
 
   if (!email || !password) {
-    toast('请输入邮箱和密码');
+    showLoginError(email ? '请输入密码' : password ? '请输入邮箱' : '请输入邮箱和密码');
     return;
   }
 
@@ -613,8 +613,11 @@ async function signIn() {
   await init();
 }
 
-function showLoginError() {
-  document.getElementById('login-error')?.classList.remove('hidden');
+function showLoginError(message = '邮箱或密码错误，请重试') {
+  const error = document.getElementById('login-error');
+  const text = document.getElementById('login-error-text');
+  if (text) text.textContent = message;
+  error?.classList.remove('hidden');
 }
 
 function hideLoginError() {
