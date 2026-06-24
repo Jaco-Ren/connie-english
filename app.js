@@ -604,11 +604,61 @@ async function signIn() {
 
   const { error } = await db.auth.signInWithPassword({ email, password });
   if (error) {
-    toast('登录失败：' + error.message);
+    showLoginErrorDialog('登录失败：邮箱或密码错误，请再试一次');
     return;
   }
 
   await init();
+}
+
+function showLoginErrorDialog(messageText) {
+  const existingDialog = document.querySelector('.login-error-modal');
+  if (existingDialog) existingDialog.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'login-error-modal';
+
+  const dialog = document.createElement('div');
+  dialog.className = 'login-error-dialog';
+  dialog.setAttribute('role', 'alertdialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'login-error-title');
+  dialog.setAttribute('aria-describedby', 'login-error-message');
+
+  const closeButton = document.createElement('button');
+  closeButton.className = 'login-error-close';
+  closeButton.type = 'button';
+  closeButton.setAttribute('aria-label', '关闭登录失败提示');
+  closeButton.textContent = '×';
+
+  const icon = document.createElement('div');
+  icon.className = 'login-error-icon';
+  icon.textContent = '!';
+
+  const title = document.createElement('h2');
+  title.id = 'login-error-title';
+  title.textContent = '无法登录';
+
+  const message = document.createElement('p');
+  message.id = 'login-error-message';
+  message.textContent = messageText;
+
+  const confirmButton = document.createElement('button');
+  confirmButton.className = 'login-error-confirm';
+  confirmButton.type = 'button';
+  confirmButton.textContent = '知道了';
+
+  const closeDialog = () => overlay.remove();
+  closeButton.addEventListener('click', closeDialog);
+  confirmButton.addEventListener('click', closeDialog);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeDialog();
+  });
+
+  dialog.append(closeButton, icon, title, message, confirmButton);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  confirmButton.focus();
 }
 
 async function signOut() {
