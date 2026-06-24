@@ -622,7 +622,6 @@ function showLoginErrorDialog(messageText) {
   dialog.className = 'login-error-dialog';
   dialog.setAttribute('role', 'alertdialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-labelledby', 'login-error-title');
   dialog.setAttribute('aria-describedby', 'login-error-message');
 
   const closeButton = document.createElement('button');
@@ -634,10 +633,6 @@ function showLoginErrorDialog(messageText) {
   const icon = document.createElement('div');
   icon.className = 'login-error-icon';
   icon.textContent = '!';
-
-  const title = document.createElement('h2');
-  title.id = 'login-error-title';
-  title.textContent = '无法登录';
 
   const message = document.createElement('p');
   message.id = 'login-error-message';
@@ -651,11 +646,8 @@ function showLoginErrorDialog(messageText) {
   const closeDialog = () => overlay.remove();
   closeButton.addEventListener('click', closeDialog);
   confirmButton.addEventListener('click', closeDialog);
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closeDialog();
-  });
 
-  dialog.append(closeButton, icon, title, message, confirmButton);
+  dialog.append(closeButton, icon, message, confirmButton);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   confirmButton.focus();
